@@ -1,0 +1,818 @@
+<!doctype html>
+<!-- Copyright (c) 2026 Alpas Made. Released under the MIT License (see LICENSE). -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="Car Screen">
+<meta name="theme-color" content="#000000">
+<title>Car Screen</title>
+<link rel="stylesheet" href="app.css">
+<style>
+  html, body { height: 100%; }
+  /* The message stage: pure black, with the words and picture as big as
+     fits. Nothing from the app's card look ever shows here. */
+  #stage {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 8px;
+    overflow: hidden;
+    background: var(--stage);
+    font-family: -apple-system, system-ui, "Helvetica Neue", Arial, sans-serif;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+    cursor: pointer;
+  }
+  #stage.pending { visibility: hidden; }
+  #stage.side { flex-direction: row; gap: 16px; }
+  #stage.side #image { width: auto; height: 100%; }
+  #text {
+    flex: 0 0 auto;
+    width: 100%;
+    margin: 0;
+    text-align: center;
+    font-weight: 900;
+    line-height: 1.05;
+    text-transform: uppercase;
+    overflow-wrap: normal;
+  }
+  #image { flex: 1 1 0; min-width: 0; min-height: 0; width: 100%; object-fit: contain; }
+
+  /* Setup sits over the stage and is only open while someone is setting up. */
+  #setup { position: fixed; inset: 0; overflow-y: auto; background: var(--bg); }
+  #panels { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; align-items: start; }
+  #panels .card + .card { margin-top: 0; }
+  #setup-close { margin-top: 16px; }
+  @media (min-width: 900px) {
+    #panels { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }
+    .address-card { grid-column: 1 / -1; }
+  }
+  .address { font-size: 24px; font-weight: 600; line-height: 1.2; overflow-wrap: anywhere; margin-top: 8px; }
+  .address + .hint { margin-top: 12px; }
+  .warn { color: var(--warn); }
+</style>
+</head>
+<body>
+  <main id="stage" aria-live="polite" aria-label="Message on screen. Tap for setup.">
+    <p id="text" hidden></p>
+    <img id="image" alt="" hidden>
+  </main>
+
+  <section id="setup" class="page" aria-labelledby="setup-title" hidden>
+    <header class="top">
+      <div>
+        <h1 id="setup-title">Car Screen</h1>
+        <p id="signal" class="chip" role="status" data-tone="warn">Getting ready</p>
+      </div>
+    </header>
+    <div id="panels">
+      <section class="card address-card" aria-labelledby="addr-title">
+        <h2 id="addr-title">Open this on your phone</h2>
+        <p class="address" id="remote-address"></p>
+        <p class="hint">Anyone who opens that address can control this screen, so keep it to yourself.</p>
+      </section>
+
+      <div class="pair">
+        <section class="card mini" aria-labelledby="remotes-title">
+          <div class="ring" id="remotes-ring" role="img" aria-label="Remotes linked">
+            <svg viewBox="0 0 64 64" aria-hidden="true"><circle class="track" cx="32" cy="32" r="30"/><circle class="bar" id="remotes-bar" cx="32" cy="32" r="30"/></svg>
+            <span class="ring-text" id="remotes-count" aria-hidden="true">0</span>
+          </div>
+          <h2 id="remotes-title" class="mini-title">Remotes</h2>
+          <p id="remotes-line" class="hint" role="status">Loading</p>
+        </section>
+        <section class="card mini" aria-labelledby="library-title">
+          <p class="mini-big" id="library-count">&ndash;</p>
+          <h2 id="library-title" class="mini-title">Messages</h2>
+          <p id="library-line" class="hint" role="status">Loading</p>
+        </section>
+      </div>
+
+      <section class="card" aria-labelledby="ready-title">
+        <h2 id="ready-title">Before you go</h2>
+        <p id="route-line" class="hint"></p>
+        <p id="home-hint" class="hint warn" hidden>Add this page to the Home Screen (Share, then Add to Home Screen) and open it from there. A Home Screen app keeps its own saved messages, separate from Safari.</p>
+        <p class="hint">Set Auto-Lock to Never in Settings so the iPad stays on. Tap the black screen any time to come back here.</p>
+        <button type="button" class="primary wide" id="setup-close">Show the black screen</button>
+      </section>
+    </div>
+    <p class="credit">Made by <a href="https://www.instagram.com/regandyvette/" target="_blank" rel="noopener">@regandyvette</a></p>
+  </section>
+
+<script src="vendor/peerjs.min.js"></script>
+<script src="shared.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  var stage = document.getElementById('stage');
+  var textEl = document.getElementById('text');
+  var imageEl = document.getElementById('image');
+  var setupEl = document.getElementById('setup');
+  var signalEl = document.getElementById('signal');
+  var remotesLine = document.getElementById('remotes-line');
+  var libraryLine = document.getElementById('library-line');
+  var routeLine = document.getElementById('route-line');
+  var RING_C = 188.5;
+  // ---- What this page owns (authoritative copies) -------------------------
+  // library and settings live in IndexedDB on this device. "current" (what
+  // is on screen now) lives in memory only.
+  var library = null;
+  var settings = null;
+  var roomId = '';       // where remotes find this screen, from the site address
+  var current = null;    // { itemId, expiresAt }
+  var seq = 0;
+  var storage = 'loading';   // loading | ready | failed
+  var signal = 'connecting'; // connecting | ready | offline | taken
+
+  // ---- Stage: the same layout engine as before ---------------------------
+  var clearTimer = null;
+  var pendingTimer = null;
+  var PENDING_MAX_MS = 1500;
+  var PAD = 8;        // matches #stage padding
+  var GAP_STACK = 8;  // matches #stage gap
+  var GAP_SIDE = 16;  // matches #stage.side gap
+  var SHARES = [0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6];
+  var DEFAULT_SHARE = 0.25;
+  var MIN_WORD_SHARE = 0.12;
+
+  function blankStage() {
+    clearTimeout(clearTimer);
+    clearTimeout(pendingTimer);
+    textEl.hidden = true;
+    imageEl.hidden = true;
+    textEl.textContent = '';
+    textEl.style.width = '';
+    imageEl.onload = null;
+    imageEl.onerror = null;
+    imageEl.removeAttribute('src');
+    stage.classList.remove('side');
+    stage.classList.remove('pending');
+  }
+
+  function fitInto(width, height) {
+    textEl.style.width = width + 'px';
+    var lo = 8;
+    var hi = Math.max(lo, Math.floor(height));
+    while (lo < hi) {
+      var mid = Math.ceil((lo + hi) / 2);
+      textEl.style.fontSize = mid + 'px';
+      var fits = textEl.scrollWidth <= textEl.clientWidth && textEl.scrollHeight <= height;
+      if (fits) lo = mid; else hi = mid - 1;
+    }
+    textEl.style.fontSize = lo + 'px';
+    return lo;
+  }
+
+  // Words alone fill the screen. With a picture, every arrangement is
+  // tried and the one that shows the picture biggest wins, with a floor on
+  // the word size so the words stay readable.
+  function fitText() {
+    if (textEl.hidden) return;
+    var cw = stage.clientWidth - PAD * 2;
+    var ch = stage.clientHeight - PAD * 2;
+    stage.classList.remove('side');
+    if (imageEl.hidden) { fitInto(cw, ch); return; }
+    var nw = imageEl.naturalWidth;
+    var nh = imageEl.naturalHeight;
+    if (!nw || !nh) { fitInto(cw, Math.floor(ch * DEFAULT_SHARE)); return; }
+    var minFont = Math.min(cw, ch) * MIN_WORD_SHARE;
+    var best = null;
+    var fallback = null;
+    [false, true].forEach(function (side) {
+      SHARES.forEach(function (share) {
+        var w = side ? Math.floor(cw * share) : cw;
+        var h = side ? ch : Math.floor(ch * share);
+        var boxW = side ? cw - w - GAP_SIDE : cw;
+        var boxH = side ? ch : ch - h - GAP_STACK;
+        var font = fitInto(w, h);
+        var scale = Math.min(boxW / nw, boxH / nh);
+        var score = nw * nh * scale * scale * Math.sqrt(font);
+        var option = { side: side, w: w, h: h, score: score, font: font };
+        if (!fallback || font > fallback.font) fallback = option;
+        if (font >= minFont && (!best || score > best.score)) best = option;
+      });
+    });
+    var pick = best || fallback;
+    stage.classList.toggle('side', pick.side);
+    fitInto(pick.w, pick.h);
+  }
+
+  // Uploaded pictures live in IndexedDB as bytes. To draw them, each gets a
+  // browser address (object URL) kept in this table.
+  // Invalidation trigger: rebuilt after every library change; an address
+  // whose picture is no longer used by any message is released.
+  var pictureUrls = new Map(); // ref -> object URL
+
+  function usedRefs(lib) {
+    var refs = new Set();
+    lib.order.forEach(function (id) {
+      var item = lib.items[id] || {};
+      if (item.picture && item.picture.kind === 'blob') {
+        refs.add(item.picture.ref);
+        if (item.picture.thumbRef) refs.add(item.picture.thumbRef);
+      }
+      if (item.thumb && item.thumb.ref) refs.add(item.thumb.ref);
+    });
+    return refs;
+  }
+
+  function loadPictures() {
+    var wanted = new Set();
+    library.order.forEach(function (id) {
+      var p = (library.items[id] || {}).picture;
+      if (p && p.kind === 'blob') wanted.add(p.ref);
+    });
+    pictureUrls.forEach(function (url, ref) {
+      if (!wanted.has(ref)) { URL.revokeObjectURL(url); pictureUrls.delete(ref); }
+    });
+    var loads = [];
+    wanted.forEach(function (ref) {
+      if (pictureUrls.has(ref)) return;
+      loads.push(CS.get('pic:' + ref).then(function (rec) {
+        if (rec) pictureUrls.set(ref, URL.createObjectURL(new Blob([rec.bytes], { type: rec.type })));
+      }));
+    });
+    return Promise.all(loads);
+  }
+
+  function pictureSrc(item) {
+    var p = item.picture;
+    if (!p) return '';
+    if (p.kind === 'url') return p.src;
+    return pictureUrls.get(p.ref) || '';
+  }
+
+  // Puts a message on the stage. The promise resolves once it is really
+  // visible, so the remote is told "showing" only when that is true.
+  function draw(item, seconds) {
+    blankStage();
+    // A message is coming: Setup gets out of the way by itself.
+    setupEl.hidden = true;
+    var src = pictureSrc(item);
+    var shown = new Promise(function (resolve) {
+      if (!src) { resolve(); return; }
+      stage.classList.add('pending');
+      var done = function () {
+        clearTimeout(pendingTimer);
+        stage.classList.remove('pending');
+        resolve();
+      };
+      // On a slow load, show the words anyway rather than a blank screen.
+      pendingTimer = setTimeout(done, PENDING_MAX_MS);
+      imageEl.onload = function () { fitText(); done(); };
+      imageEl.onerror = function () { imageEl.hidden = true; fitText(); done(); };
+      imageEl.src = src;
+      imageEl.hidden = false;
+    });
+    if (item.text) {
+      textEl.textContent = item.text;
+      textEl.hidden = false;
+      fitText();
+    }
+    clearTimer = setTimeout(function () {
+      current = null;
+      seq += 1;
+      blankStage();
+      broadcastState();
+    }, seconds * 1000);
+    return shown;
+  }
+
+  // Pictures are fetched ahead of time so the first press shows at once.
+  // Invalidation trigger: runs again whenever the library version changes.
+  var warmed = [];
+  function warmPictures() {
+    warmed = library.order.map(function (id) {
+      var src = pictureSrc(library.items[id] || {});
+      if (!src) return null;
+      var img = new Image();
+      img.src = src;
+      return img;
+    });
+  }
+
+  // ---- Showing, clearing, auto next --------------------------------------
+  var autoTimer = null;
+  var lastAutoId = '';
+  // A message shown by auto next stays a little past the change time, so
+  // the next one replaces it with no black gap.
+  var AUTO_OVERLAP_SECONDS = 2;
+
+  function showItem(itemId) {
+    var item = library.items[itemId];
+    if (!item) return Promise.reject(new Error('That message is no longer on the screen. Refresh the remote.'));
+    var seconds = settings.autoState === 'on' ? settings.autoSeconds + AUTO_OVERLAP_SECONDS : settings.seconds;
+    seq += 1;
+    lastAutoId = itemId;
+    current = { itemId: itemId, expiresAt: Date.now() + seconds * 1000, totalMs: seconds * 1000 };
+    return draw(item, seconds);
+  }
+
+  function clearNow() {
+    seq += 1;
+    current = null;
+    blankStage();
+  }
+
+  function scheduleAuto() {
+    clearTimeout(autoTimer);
+    if (settings.autoState !== 'on') return;
+    autoTimer = setTimeout(autoTick, settings.autoSeconds * 1000);
+  }
+
+  function autoTick() {
+    if (settings.autoState !== 'on') return;
+    var order = library.order;
+    if (order.length > 0) {
+      var next = order[(order.indexOf(lastAutoId) + 1) % order.length];
+      showItem(next).catch(function () {});
+      broadcastState();
+    }
+    scheduleAuto();
+  }
+
+  function saveSettings(next) {
+    return CS.set('settings', next).then(function () { settings = next; });
+  }
+
+  // ---- Requests from a welcomed remote -----------------------------------
+  // Each request has an id made by the remote. An id seen before gets the
+  // first answer again instead of acting twice. Cleared by eviction (oldest
+  // first after 200) or a page reload.
+  var answered = new Map();
+
+  // ---- Changing the messages ---------------------------------------------
+  // An upload in progress: ref -> { type, size, count, chunks, at }.
+  // Memory only; a dropped link or a reload throws it away and the remote
+  // shows the save as failed.
+  var uploads = new Map();
+  var recentUploads = new Map(); // ref -> time stored, so a sweep spares it
+  var HEX64 = /^[0-9a-f]{64}$/;
+
+  function fail(text, code) {
+    var e = new Error(text);
+    e.code = code || '';
+    return Promise.reject(e);
+  }
+
+  // One storage write holds the new library, its new version number and
+  // the ids of the last changes applied. So a change is either fully saved
+  // with its id remembered, or not saved at all, even across a reload.
+  function commit(next, requestId) {
+    next.version = library.version + 1;
+    next.applied = (library.applied || []).concat(requestId).slice(-50);
+    return CS.set('library', next).then(function () {
+      library = next;
+      if (current && !library.items[current.itemId]) clearNow();
+      return loadPictures();
+    }).then(function () {
+      warmPictures();
+      sweepPictures();
+    });
+  }
+
+  // Pictures no message uses any more are deleted, except ones that
+  // arrived in the last 10 minutes (their message may not be saved yet).
+  function sweepPictures() {
+    var used = usedRefs(library);
+    CS.keys('pic:').then(function (keys) {
+      keys.forEach(function (key) {
+        var ref = key.slice(4);
+        if (used.has(ref)) return;
+        if ((recentUploads.get(ref) || 0) > Date.now() - 600000) return;
+        CS.del(key).catch(function () {});
+      });
+    }).catch(function () {});
+  }
+
+  function checkStale(args) {
+    if (args.baseVersion !== library.version) {
+      return 'The messages were changed from another device a moment ago. Check them, then save again.';
+    }
+    return '';
+  }
+
+  function cleanItem(raw, existing) {
+    if (!raw || typeof raw !== 'object') return { error: 'That message did not arrive whole. Try again.' };
+    var id = String(raw.id || '');
+    if (!/^[0-9a-z-]{1,40}$/.test(id)) return { error: 'That message has a bad id. Reload the remote.' };
+    var label = String(raw.label || '').trim();
+    var text = String(raw.text || '').trim();
+    if (!label) return { error: 'Give the key a name.' };
+    if (label.length > CS.MAX_LABEL) return { error: 'The name is too long. The most is ' + CS.MAX_LABEL + ' letters.' };
+    if (text.length > CS.MAX_TEXT) return { error: 'The words are too long. The most is ' + CS.MAX_TEXT + ' letters.' };
+    var picture = null;
+    var p = raw.picture;
+    if (p && p.kind === 'url') {
+      // A site picture can be kept, never invented.
+      var old = existing && existing.picture;
+      if (!old || old.kind !== 'url' || old.src !== p.src) return { error: 'That picture is not on this screen.' };
+      picture = { kind: 'url', src: old.src };
+    } else if (p && p.kind === 'blob') {
+      if (!HEX64.test(String(p.ref)) || !HEX64.test(String(p.thumbRef))) return { error: 'That picture did not arrive whole. Try again.' };
+      picture = { kind: 'blob', ref: p.ref, thumbRef: p.thumbRef };
+    }
+    var thumb = null;
+    if (raw.thumb && raw.thumb.ref) {
+      if (!HEX64.test(String(raw.thumb.ref))) return { error: 'That key picture did not arrive whole. Try again.' };
+      thumb = { ref: raw.thumb.ref, custom: raw.thumb.custom === true };
+    }
+    if (!text && !picture) return { error: 'Add words, a picture, or both.' };
+    return { item: { id: id, label: label, text: text, picture: picture, thumb: thumb } };
+  }
+
+  function saveItem(args, requestId) {
+    var stale = checkStale(args);
+    if (stale) return fail(stale, 'conflict');
+    var existing = library.items[String((args.item || {}).id || '')];
+    var cleaned = cleanItem(args.item, existing);
+    if (cleaned.error) return fail(cleaned.error);
+    var item = cleaned.item;
+    var refs = [];
+    if (item.picture && item.picture.kind === 'blob') refs.push(item.picture.ref, item.picture.thumbRef);
+    if (item.thumb) refs.push(item.thumb.ref);
+    return Promise.all(refs.map(function (ref) { return CS.get('pic:' + ref); })).then(function (found) {
+      if (found.some(function (rec) { return !rec; })) return fail('A picture for this message is not on the screen. Choose it again and save.');
+      var order = library.order.filter(function (id) { return id !== item.id; });
+      var index = Number.isInteger(args.index) ? Math.max(0, Math.min(order.length, args.index)) : order.length;
+      order.splice(index, 0, item.id);
+      var items = Object.assign({}, library.items);
+      items[item.id] = item;
+      return commit({ order: order, items: items }, requestId);
+    });
+  }
+
+  function deleteItem(args, requestId) {
+    var stale = checkStale(args);
+    if (stale) return fail(stale, 'conflict');
+    var id = String(args.id || '');
+    var items = Object.assign({}, library.items);
+    delete items[id];
+    return commit({ order: library.order.filter(function (x) { return x !== id; }), items: items }, requestId);
+  }
+
+  function pictureOp(op, args) {
+    var ref = String(args.ref || '');
+    if (!HEX64.test(ref)) return fail('That picture did not arrive whole. Try again.');
+    if (op === 'has_picture') {
+      return CS.get('pic:' + ref).then(function (rec) {
+        if (rec) recentUploads.set(ref, Date.now());
+        return { have: Boolean(rec) };
+      });
+    }
+    if (op === 'get_picture') {
+      return CS.get('pic:' + ref).then(function (rec) {
+        if (!rec) return fail('That picture is not on the screen.');
+        return { type: rec.type, bytes: rec.bytes };
+      });
+    }
+    if (op === 'pic_begin') {
+      if (CS.PICTURE_TYPES.indexOf(args.type) < 0) return fail('That kind of picture is not supported. Use PNG, JPG, GIF or WebP.');
+      if (!Number.isInteger(args.size) || args.size < 1 || args.size > CS.MAX_PICTURE_BYTES) {
+        return fail('That picture is too big. The most is 15MB.');
+      }
+      uploads.set(ref, { type: args.type, size: args.size, count: Math.ceil(args.size / CS.CHUNK_BYTES), chunks: [], at: Date.now() });
+      return Promise.resolve();
+    }
+    var up = uploads.get(ref);
+    if (!up) return fail('The screen lost track of that upload. Save again.');
+    if (op === 'pic_chunk') {
+      var i = args.i;
+      // The link may hand the bytes over as a plain buffer or as a view on one.
+      var piece = args.bytes;
+      if (ArrayBuffer.isView(piece)) piece = piece.buffer.slice(piece.byteOffset, piece.byteOffset + piece.byteLength);
+      if (!Number.isInteger(i) || i < 0 || i >= up.count || !(piece instanceof ArrayBuffer) || piece.byteLength > CS.CHUNK_BYTES) {
+        return fail('A piece of the picture arrived damaged. Save again.');
+      }
+      up.chunks[i] = piece; // the same piece sent twice just lands in the same slot
+      return Promise.resolve();
+    }
+    // pic_end: put the pieces together, check them, store them.
+    var whole = new Uint8Array(up.size);
+    var offset = 0;
+    for (var n = 0; n < up.count; n += 1) {
+      if (!up.chunks[n]) return fail('A piece of the picture is missing. Save again.');
+      if (offset + up.chunks[n].byteLength > up.size) return fail('The picture arrived the wrong size. Save again.');
+      whole.set(new Uint8Array(up.chunks[n]), offset);
+      offset += up.chunks[n].byteLength;
+    }
+    if (offset !== up.size) return fail('The picture arrived the wrong size. Save again.');
+    return CS.fingerprint(whole.buffer).then(function (print) {
+      if (print !== ref) return fail('The picture arrived damaged. Save again.');
+      return CS.set('pic:' + ref, { type: up.type, bytes: whole.buffer });
+    }).then(function () {
+      uploads.delete(ref);
+      recentUploads.set(ref, Date.now());
+    });
+  }
+
+  function act(op, args, requestId) {
+    args = args || {};
+    if (op === 'save_item') return saveItem(args, requestId);
+    if (op === 'delete_item') return deleteItem(args, requestId);
+    if (op === 'has_picture' || op === 'get_picture' || op === 'pic_begin' || op === 'pic_chunk' || op === 'pic_end') {
+      return pictureOp(op, args);
+    }
+    if (op === 'show') {
+      return showItem(String(args.itemId || '')).then(scheduleAuto);
+    }
+    if (op === 'clear') {
+      // Clear also stops auto next, so the screen stays black.
+      var stop = settings.autoState === 'on'
+        ? saveSettings({ seconds: settings.seconds, autoState: 'off', autoSeconds: settings.autoSeconds })
+        : Promise.resolve();
+      return stop.then(function () { clearTimeout(autoTimer); clearNow(); });
+    }
+    if (op === 'set_seconds') {
+      if (!CS.validSeconds(args.seconds)) {
+        return Promise.reject(new Error('Seconds must be a whole number from ' + CS.MIN_SECONDS + ' to ' + CS.MAX_SECONDS + '.'));
+      }
+      return saveSettings({ seconds: args.seconds, autoState: settings.autoState, autoSeconds: settings.autoSeconds });
+    }
+    if (op === 'set_auto') {
+      if (args.state !== 'on' && args.state !== 'off') return Promise.reject(new Error('Auto next must be on or off.'));
+      if (!CS.validSeconds(args.seconds, CS.MIN_AUTO_SECONDS)) {
+        return Promise.reject(new Error('Seconds must be a whole number from ' + CS.MIN_AUTO_SECONDS + ' to ' + CS.MAX_SECONDS + '.'));
+      }
+      var wasOn = settings.autoState === 'on';
+      var changed = args.seconds !== settings.autoSeconds;
+      return saveSettings({ seconds: settings.seconds, autoState: args.state, autoSeconds: args.seconds })
+        .then(function () {
+          if (args.state === 'on' && (!wasOn || changed)) autoTick();
+          else scheduleAuto();
+        });
+    }
+    return Promise.reject(new Error('This screen does not know that action. Reload both pages.'));
+  }
+
+  function handleRequest(entry, msg) {
+    var id = String(msg.id || '');
+    var op = String(msg.op || '');
+    if (!id || id.length > 64) return;
+    if (answered.has(id)) { send(entry, answered.get(id)); return; }
+    // A change already saved before a reload is answered "done" again
+    // rather than applied a second time.
+    if ((library.applied || []).indexOf(id) >= 0) {
+      send(entry, { t: 'res', id: id, ok: true, state: snapshot() });
+      return;
+    }
+    act(op, msg.args, id).then(function (data) {
+      return { t: 'res', id: id, ok: true, data: data || null, state: snapshot() };
+    }, function (e) {
+      return { t: 'res', id: id, ok: false, code: e.code || '', error: e.message || 'The screen could not do that.', state: snapshot() };
+    }).then(function (res) {
+      // Picture pieces and picture reads are safe to repeat and would
+      // crowd everything else out of the memory of answers.
+      if (op !== 'pic_chunk' && op !== 'get_picture') {
+        answered.set(id, res);
+        if (answered.size > 200) answered.delete(answered.keys().next().value);
+      }
+      send(entry, res);
+      if (op.indexOf('pic_') !== 0 && op !== 'has_picture' && op !== 'get_picture') broadcastState();
+    });
+  }
+
+  // ---- Links to remotes --------------------------------------------------
+  // Each link is "new" until it says hello with a matching version, then
+  // "welcomed". Nothing else is accepted before that.
+  var links = new Set();
+
+  function welcomedCount() {
+    var n = 0;
+    links.forEach(function (e) { if (e.phase === 'welcomed') n += 1; });
+    return n;
+  }
+
+  function snapshot() {
+    if (current && Date.now() >= current.expiresAt) current = null;
+    return {
+      seq: seq,
+      now: current ? { itemId: current.itemId, remainingMs: current.expiresAt - Date.now(), totalMs: current.totalMs } : null,
+      settings: settings,
+      libraryVersion: library.version,
+      remotes: welcomedCount(),
+    };
+  }
+
+  function send(entry, msg) {
+    try { if (entry.conn.open) entry.conn.send(msg); } catch (e) { /* the heartbeat will drop a dead link */ }
+  }
+
+  function broadcastState() {
+    var state = snapshot();
+    links.forEach(function (e) { if (e.phase === 'welcomed') send(e, { t: 'state', state: state }); });
+    renderSetup();
+  }
+
+  function dropLink(entry) {
+    if (!links.has(entry)) return;
+    links.delete(entry);
+    try { entry.conn.close(); } catch (e) { /* already closed */ }
+    broadcastState();
+  }
+
+  function refuse(entry, reason) {
+    send(entry, { t: 'refused', reason: reason });
+    setTimeout(function () { dropLink(entry); }, 500);
+  }
+
+  function onHomeConnection(conn) {
+    var entry = { conn: conn, phase: 'new', lastSeen: Date.now() };
+    links.add(entry);
+    conn.on('close', function () { dropLink(entry); });
+    conn.on('error', function () { dropLink(entry); });
+    conn.on('data', function (msg) {
+      if (!msg || typeof msg !== 'object') return;
+      entry.lastSeen = Date.now();
+      if (msg.t === 'hello' && entry.phase === 'new') {
+        if (msg.v !== CS.PROTOCOL) { refuse(entry, 'version'); return; }
+        entry.phase = 'welcomed';
+        send(entry, { t: 'welcome', library: library, state: snapshot() });
+        broadcastState();
+        setTimeout(function () {
+          CS.route(conn.peerConnection).then(function (route) { entry.route = route; renderSetup(); });
+        }, 1500);
+      } else if (entry.phase !== 'welcomed') {
+        // Anything else before the hello is ignored.
+      } else if (msg.t === 'ping') {
+        send(entry, { t: 'pong' });
+      } else if (msg.t === 'get_library') {
+        send(entry, { t: 'library', library: library });
+      } else if (msg.t === 'req') {
+        handleRequest(entry, msg);
+      }
+    });
+  }
+
+  // A remote pings every 2 seconds. A link silent for 3 beats is dead.
+  setInterval(function () {
+    var cutoff = Date.now() - CS.HEARTBEAT_MS * 3;
+    links.forEach(function (e) { if (e.lastSeen < cutoff) dropLink(e); });
+  }, CS.HEARTBEAT_MS);
+
+  // ---- The meeting address (matchmaking) ---------------------------------
+  var home = null;
+  var homeRetry = null;
+  var homeBackoff = 1000;
+  var idTakenSince = 0;
+
+  function setSignal(next) {
+    signal = next;
+    renderSetup();
+  }
+
+  function retryHome() {
+    clearTimeout(homeRetry);
+    homeRetry = setTimeout(startHome, homeBackoff);
+    homeBackoff = Math.min(homeBackoff * 2, 10000);
+  }
+
+  function startHome() {
+    clearTimeout(homeRetry);
+    if (!roomId) return;
+    if (home && !home.destroyed) {
+      if (home.disconnected) { try { home.reconnect(); } catch (e) { home.destroy(); home = null; retryHome(); } }
+      return;
+    }
+    setSignal('connecting');
+    home = new Peer(roomId, { debug: 0 });
+    var mine = home;
+    mine.on('open', function () {
+      homeBackoff = 1000;
+      idTakenSince = 0;
+      setSignal('ready');
+    });
+    mine.on('connection', onHomeConnection);
+    mine.on('disconnected', function () {
+      if (mine !== home) return;
+      setSignal('offline');
+      retryHome();
+    });
+    mine.on('error', function (e) {
+      if (mine !== home) return;
+      if (e.type === 'peer-unavailable') return;
+      // After a reload the matchmaking service can still hold our own old
+      // address for a while, so keep trying. If it is still taken after 90
+      // seconds, another screen page is open for this site somewhere.
+      var taken = false;
+      if (e.type === 'unavailable-id') {
+        if (!idTakenSince) idTakenSince = Date.now();
+        if (Date.now() - idTakenSince > 90000) { homeBackoff = 10000; taken = true; }
+      }
+      setSignal(taken ? 'taken' : 'offline');
+      try { mine.destroy(); } catch (err) { /* already gone */ }
+      home = null;
+      retryHome();
+    });
+  }
+
+  function wakeUp() {
+    if (document.hidden) return;
+    homeBackoff = 1000;
+    startHome();
+    keepAwake();
+  }
+  document.addEventListener('visibilitychange', wakeUp);
+  window.addEventListener('pageshow', wakeUp);
+  window.addEventListener('online', wakeUp);
+  window.addEventListener('offline', function () { setSignal('offline'); });
+
+  // Ask the browser to keep the display on. Not every browser allows it,
+  // so Setup still says to set Auto-Lock to Never.
+  function keepAwake() {
+    if (!navigator.wakeLock || document.hidden) return;
+    navigator.wakeLock.request('screen').catch(function () {});
+  }
+
+  // ---- Setup panel -------------------------------------------------------
+  function renderSetup() {
+    signalEl.dataset.tone = storage === 'failed' ? 'error' : signal === 'ready' ? 'ok' : 'warn';
+    signalEl.textContent = storage === 'failed' ? 'Storage problem'
+      : signal === 'ready' ? 'Ready'
+      : signal === 'connecting' ? 'Getting ready'
+      : signal === 'taken' ? 'Another screen is open'
+      : 'No internet, retrying';
+    document.getElementById('remote-address').textContent = location.origin + '/remote.html';
+    if (storage === 'loading') return;
+    if (storage === 'failed') {
+      remotesLine.textContent = 'This browser will not let the page save anything. Turn off Private Browsing and reload.';
+      libraryLine.textContent = '';
+      return;
+    }
+    var live = welcomedCount();
+    document.getElementById('remotes-count').textContent = String(live);
+    document.getElementById('remotes-bar').style.strokeDashoffset = String(live > 0 ? 0 : RING_C);
+    document.getElementById('remotes-ring').setAttribute('aria-label', live + (live === 1 ? ' remote linked' : ' remotes linked'));
+    remotesLine.textContent = signal === 'taken'
+      ? 'Another screen page is open for this site. Close it and this one takes over.'
+      : live === 0 ? 'None linked right now.' : live === 1 ? 'linked' : 'linked';
+    var count = library.order.length;
+    document.getElementById('library-count').textContent = String(count);
+    libraryLine.textContent = count === 0 ? 'None saved yet.' : 'saved on this screen';
+    var route = '';
+    links.forEach(function (e) { if (e.phase === 'welcomed' && e.route) route = e.route; });
+    routeLine.textContent = route === 'direct' ? 'Link route: straight between the two devices.'
+      : route === 'internet' ? 'Link route: out through the internet and back. Presses use a little mobile data.'
+      : route === 'relay' ? 'Link route: through a relay on the internet. Presses use mobile data.'
+      : '';
+  }
+
+  function openSetup() { setupEl.hidden = false; renderSetup(); }
+  stage.addEventListener('click', openSetup);
+  document.getElementById('setup-close').addEventListener('click', function () {
+    setupEl.hidden = true;
+    fitText();
+  });
+
+  var isIos = /iPad|iPhone/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
+  document.getElementById('home-hint').hidden = !(isIos && !navigator.standalone);
+
+  window.addEventListener('resize', fitText);
+  window.addEventListener('orientationchange', function () { setTimeout(fitText, 300); });
+
+  // ---- Start -------------------------------------------------------------
+  Promise.all([CS.get('library'), CS.get('settings'), CS.roomId()])
+    .then(function (saved) {
+      var steps = [];
+      library = saved[0];
+      if (!library) { library = CS.starterLibrary(); steps.push(CS.set('library', library)); }
+      settings = saved[1] || CS.defaultSettings();
+      if (!saved[1]) steps.push(CS.set('settings', settings));
+      roomId = saved[2];
+      // Left over from the short lived pairing version; no longer used.
+      steps.push(CS.del('identity'), CS.del('remotes'));
+      return Promise.all(steps);
+    })
+    .then(function () {
+      return loadPictures();
+    })
+    .then(function () {
+      storage = 'ready';
+      if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(function () {});
+      warmPictures();
+      sweepPictures();
+      keepAwake();
+      startHome();
+      // Setup shows on every load, so the address is there to read. It
+      // goes away by itself as soon as a message is shown.
+      openSetup();
+      if (settings.autoState === 'on') autoTick();
+    })
+    .catch(function () {
+      storage = 'failed';
+      openSetup();
+    });
+})();
+</script>
+</body>
+</html>

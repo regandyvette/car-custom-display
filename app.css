@@ -1,0 +1,166 @@
+/* Copyright (c) 2026 Alpas Made. Released under the MIT License (see LICENSE). */
+/* Car Screen: the one look shared by every page. Values come from
+   DESIGN-TRUTH.md; change them there and here together. */
+
+@font-face {
+  font-family: "Outfit";
+  src: url("fonts/outfit-latin.woff2") format("woff2");
+  font-weight: 400 800;
+  font-display: swap;
+}
+
+:root {
+  --bg: #0a0a0b;
+  --stage: #000000;
+  --card: #18181b;
+  --control: #26262a;
+  --control-hover: #303035;
+  --text: #ffffff;
+  --muted: #9a9aa2;
+  --border: rgba(255, 255, 255, 0.12);
+  --warn: #ffb000;
+  --ok: #4ade80;
+  --error: #ff6b6b;
+  --scrim: rgba(0, 0, 0, 0.72);
+  --r-card: 24px;
+  --r-control: 16px;
+  --r-pill: 999px;
+  --font: "Outfit", -apple-system, system-ui, "Helvetica Neue", Arial, sans-serif;
+}
+
+* { box-sizing: border-box; }
+html, body {
+  margin: 0;
+  min-height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 16px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -webkit-text-size-adjust: 100%;
+}
+h1 { margin: 0; font-size: 32px; line-height: 1.1; font-weight: 700; letter-spacing: -0.01em; }
+h2 { margin: 0 0 12px; font-size: 20px; line-height: 1.2; font-weight: 600; }
+p { margin: 0; }
+
+.page { width: 100%; padding: 24px 16px 48px; }
+@media (min-width: 900px) { .page { padding: 32px 32px 48px; } }
+
+.top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.top-actions { display: flex; gap: 12px; flex: 0 0 auto; }
+
+/* A small line of status with a dot: green linked, amber waiting, red no. */
+.chip { display: inline-flex; align-items: center; gap: 8px; margin-top: 8px; color: var(--muted); font-size: 14px; }
+.chip::before { content: ""; width: 8px; height: 8px; border-radius: var(--r-pill); background: var(--muted); }
+.chip[data-tone="ok"]::before { background: var(--ok); }
+.chip[data-tone="warn"]::before { background: var(--warn); }
+.chip[data-tone="error"]::before { background: var(--error); }
+.chip[data-tone="ok"] { color: var(--text); }
+
+.card {
+  padding: 24px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--r-card);
+}
+.card + .card { margin-top: 16px; }
+.card p + p, .card p + .row, .card .row + p, .card .row + .row, .card ol + .row { margin-top: 12px; }
+
+.hint { color: var(--muted); font-size: 14px; line-height: 1.5; }
+.row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.status[data-state="succeeded"] { color: var(--ok); }
+.status[data-state="failed"] { color: var(--error); }
+.status[data-state="warn"] { color: var(--warn); }
+
+button, input {
+  min-height: 48px;
+  padding: 8px 16px;
+  background: var(--control);
+  color: var(--text);
+  border: 1px solid transparent;
+  border-radius: var(--r-control);
+  font: inherit;
+  font-weight: 600;
+}
+button { cursor: pointer; }
+button:hover:not(:disabled) { background: var(--control-hover); }
+button:disabled { color: var(--muted); cursor: default; opacity: 0.6; }
+button.primary, button.toggle[aria-pressed="true"] { background: var(--text); color: var(--stage); }
+button.primary:hover:not(:disabled), button.toggle[aria-pressed="true"]:hover:not(:disabled) { background: #e6e6e6; }
+button.danger { color: var(--error); }
+button.wide { width: 100%; }
+button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid var(--text); outline-offset: 4px; }
+input { border-color: var(--border); background: var(--stage); }
+input[aria-invalid="true"] { border-color: var(--error); }
+input:disabled { color: var(--muted); }
+
+/* Round icon buttons, like the two beside the page title. */
+button.icon {
+  width: 48px;
+  height: 48px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--r-pill);
+}
+button.icon[aria-pressed="true"] { background: var(--text); color: var(--stage); }
+svg.i { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+/* A big number with its unit beside it. */
+.big-number { display: flex; align-items: baseline; gap: 12px; }
+.big-number input {
+  width: 128px;
+  min-height: 64px;
+  padding: 8px 16px;
+  font-size: 40px;
+  line-height: 1;
+  font-weight: 700;
+}
+.big-number span { color: var(--muted); font-size: 20px; }
+
+.credit { margin-top: 32px; color: var(--muted); font-size: 14px; text-align: center; }
+.credit a { color: var(--text); text-decoration: underline; text-underline-offset: 4px; }
+
+[hidden] { display: none !important; }
+
+/* ---- Bento pieces shared by the remote and the screen's setup ---- */
+button.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 20px;
+  border-radius: var(--r-pill);
+}
+button.pill svg.i { width: 20px; height: 20px; }
+
+.ring { position: relative; width: 64px; height: 64px; flex: 0 0 auto; }
+.ring svg { display: block; width: 64px; height: 64px; transform: rotate(-90deg); }
+.ring circle { fill: none; stroke-width: 4; }
+.ring .track { stroke: var(--control); }
+.ring .bar { stroke: var(--text); stroke-linecap: round; stroke-dasharray: 188.5; stroke-dashoffset: 188.5; transition: stroke-dashoffset 1s linear; }
+.ring-text { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 20px; font-weight: 600; }
+
+.card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.card-head h2 { margin: 0 0 4px; }
+
+.stepper { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 24px; }
+.stepper .big-number { gap: 8px; }
+.stepper .big-number input { width: 104px; text-align: center; }
+.stepper + p { margin-top: 16px; }
+
+.pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.pair .card + .card { margin-top: 0; }
+.card.mini { padding: 20px; }
+.mini .ring { margin-bottom: 16px; }
+.mini-big { font-size: 40px; line-height: 64px; font-weight: 700; margin: 0 0 16px; }
+.mini-big.small { font-size: 28px; }
+.mini h2.mini-title { margin: 0; font-size: 18px; }
+.mini .hint { margin-top: 4px; }

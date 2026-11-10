@@ -1,0 +1,43 @@
+<!doctype html>
+<!-- Copyright (c) 2026 Alpas Made. Released under the MIT License (see LICENSE). -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<title>Car Screen</title>
+<link rel="stylesheet" href="app.css">
+<style>
+  #choices { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  @media (min-width: 900px) { #choices { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; } }
+  a.choice { display: block; min-height: 128px; color: var(--text); text-decoration: none; }
+  a.choice:hover { background: var(--control); }
+  a.choice h2 { font-size: 24px; margin-bottom: 4px; }
+  a.choice p { color: var(--muted); }
+  .note { margin-top: 32px; color: var(--muted); font-size: 14px; text-align: center; }
+  .note + .credit { margin-top: 8px; }
+</style>
+</head>
+<body>
+<main class="page">
+  <header class="top">
+    <div>
+      <h1>Car Screen</h1>
+      <p class="chip">Which device is this?</p>
+    </div>
+  </header>
+  <div id="choices">
+    <a class="choice card" href="screen.html">
+      <h2>Screen</h2>
+      <p>The iPad or tablet that shows the messages.</p>
+    </a>
+    <a class="choice card" href="remote.html">
+      <h2>Remote</h2>
+      <p>The phone or computer you press the keys on.</p>
+    </a>
+  </div>
+  <p class="note">For fun, on private property. Do not use a rear facing screen on public roads, and check your local laws.</p>
+  <p class="credit">Made by <a href="https://www.instagram.com/regandyvette/" target="_blank" rel="noopener">@regandyvette</a></p>
+</main>
+</body>
+</html>

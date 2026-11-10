@@ -1,0 +1,1379 @@
+<!doctype html>
+<!-- Copyright (c) 2026 Alpas Made. Released under the MIT License (see LICENSE). -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="Car Remote">
+<meta name="theme-color" content="#000000">
+<title>Car Screen Remote</title>
+<link rel="stylesheet" href="app.css">
+<style>
+  /* Room at the bottom for the tab bar on a phone. */
+  .page { padding-bottom: 128px; }
+
+  #layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; align-items: start; }
+  #tabs {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    padding: 8px 16px calc(8px + env(safe-area-inset-bottom));
+    background: var(--bg);
+    border-top: 1px solid var(--border);
+  }
+  #tabs button {
+    min-height: 56px;
+    padding: 4px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    background: transparent;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 600;
+  }
+  #tabs button[aria-pressed="true"] { color: var(--text); }
+  @media (min-width: 900px) {
+    .page { padding-bottom: 48px; }
+    #tabs { display: none; }
+    #layout { grid-template-columns: minmax(0, 1fr) 400px; gap: 32px; }
+    #side > [hidden].view { display: block !important; }
+    #view-remote[hidden] { display: block !important; }
+    #side > .view + .view { margin-top: 16px; }
+  }
+
+  /* The status line under the title: linked, and what is showing now. */
+  .chips { display: flex; flex-wrap: wrap; column-gap: 16px; }
+  .chip#now { min-width: 0; max-width: 100%; color: var(--text); }
+  #now-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .chip[data-tone="now"]::before { background: var(--text); }
+  .chip#now[data-tone="warn"] { color: var(--warn); }
+  .chip#now[data-tone="error"] { color: var(--error); }
+  .chip#now[data-tone="error"] #now-text { white-space: normal; }
+  .chip#now[data-tone="idle"] { color: var(--muted); }
+  .sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+  #notice { margin-bottom: 16px; }
+  #edit-bar { margin-bottom: 16px; justify-content: space-between; flex-wrap: nowrap; }
+  #edit-bar p { flex: 1 1 auto; }
+  #edit-bar button { flex: 0 0 auto; }
+
+  /* The keypad: square picture keys, three across, the name under each. */
+  #keys { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px 12px; }
+  #keys[data-stale="true"] { opacity: 0.5; }
+  .cell { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+  .key {
+    position: relative;
+    display: block;
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    min-height: 88px;
+    padding: 0;
+    overflow: hidden;
+    text-align: left;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+  }
+  .key img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center top; }
+  .key-pic-text { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 8px; text-align: center; font-size: 16px; font-weight: 700; text-transform: uppercase; overflow: hidden; }
+  .key-number {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    min-width: 24px;
+    padding: 0 8px;
+    border-radius: var(--r-pill);
+    background: var(--scrim);
+    color: var(--text);
+    font-size: 14px;
+    line-height: 24px;
+    font-weight: 600;
+    text-align: center;
+  }
+  .key-edit { position: absolute; top: 8px; right: 8px; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border-radius: var(--r-pill); background: var(--scrim); }
+  .key-edit svg { width: 16px; height: 16px; }
+  /* The showing key gets a 4px white ring inside its edge. */
+  .key[data-active="true"]::after { content: ""; position: absolute; inset: 0; border-radius: inherit; box-shadow: inset 0 0 0 4px var(--text); pointer-events: none; }
+  .key.add { display: flex; align-items: center; justify-content: center; border-style: dashed; background: transparent; color: var(--muted); }
+  .key.add svg, .key.clear svg { width: 32px; height: 32px; }
+  .key.clear { display: flex; align-items: center; justify-content: center; color: var(--text); }
+  .key-label { color: var(--muted); font-size: 14px; font-weight: 400; line-height: 1.4; text-align: center; overflow-wrap: anywhere; }
+  .cell[data-active="true"] .key-label { color: var(--text); font-weight: 600; }
+
+  /* Auto next: dots show where the rotation is. */
+  .dots { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 24px; }
+  .dots span { width: 8px; height: 8px; border-radius: var(--r-pill); background: var(--control-hover); }
+  .dots span[data-on="true"] { background: var(--text); box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.16); }
+  .card .hint + .stepper { margin-top: 16px; }
+  #view-auto .card-head + .dots:empty { margin-top: 0; }
+
+  /* The editor: one field per group, groups further apart than the lines
+     inside one. */
+  .field + .field, .field + #ed-status, #ed-status + .row { margin-top: 24px; }
+  .field > label, .field > .label { display: block; font-weight: 600; margin-bottom: 8px; }
+  .field .hint { margin-top: 8px; }
+  .field input[type="text"] { width: 100%; font-weight: 400; }
+  .preview { width: 88px; height: 88px; border: 1px solid var(--border); border-radius: 20px; background: var(--stage); object-fit: cover; object-position: center top; }
+  .filebtn { display: inline-flex; align-items: center; min-height: 48px; padding: 8px 16px; background: var(--control); border-radius: var(--r-control); font-weight: 600; cursor: pointer; }
+  .filebtn:focus-within { outline: 2px solid var(--text); outline-offset: 4px; }
+  .filebtn input { position: absolute; width: 1px; height: 1px; min-height: 0; opacity: 0; overflow: hidden; padding: 0; }
+  #ed-status { min-height: 24px; font-weight: 600; }
+  .card .big-number + p { margin-top: 16px; }
+  .view > .card + .pair, .view > .pair + .card { margin-top: 16px; }
+</style>
+</head>
+<body>
+<main class="page">
+  <header class="top">
+    <div>
+      <h1>Car Screen</h1>
+      <div class="chips">
+        <p id="link" class="chip" role="status" data-tone="warn">Starting</p>
+        <p id="now" class="chip" data-tone="now" hidden><span id="now-text"></span></p>
+      </div>
+    </div>
+    <div class="top-actions">
+      <button type="button" class="icon" id="edit-toggle" aria-label="Edit messages" aria-pressed="false" disabled><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9"/><path d="M17 7h3"/><circle cx="15" cy="7" r="2"/><path d="M4 17h3"/><path d="M11 17h9"/><circle cx="9" cy="17" r="2"/></svg></button>
+      <button type="button" class="icon" id="add-top" aria-label="Add a message" disabled><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg></button>
+    </div>
+  </header>
+
+  <div id="app">
+    <div id="layout">
+      <section id="view-remote" class="view" aria-label="Remote">
+        <div id="pad">
+          <p id="notice" class="hint status" role="status" data-state="warn" hidden></p>
+          <div id="edit-bar" class="row" hidden>
+            <p id="edit-note" class="hint status" role="status" aria-live="polite" data-state="idle">Editing. Tap a card to change it.</p>
+            <button type="button" class="primary" id="edit-done">Done</button>
+          </div>
+
+          <p id="result" class="sr-only" role="status" aria-live="polite" data-state="idle"></p>
+          <div id="keys"></div>
+        </div>
+
+        <section id="editor" class="card" aria-labelledby="editor-title" hidden>
+          <h2 id="editor-title">New message</h2>
+          <div class="field">
+            <label for="ed-label">Name on the key</label>
+            <input id="ed-label" type="text" maxlength="24" autocomplete="off" aria-describedby="ed-label-err">
+            <p id="ed-label-err" class="hint status" role="alert" data-state="failed" hidden></p>
+          </div>
+          <div class="field">
+            <label for="ed-text">Words on the screen</label>
+            <input id="ed-text" type="text" maxlength="80" autocomplete="off" aria-describedby="ed-text-hint">
+            <p id="ed-text-hint" class="hint">Leave empty to show the picture alone.</p>
+          </div>
+          <div class="field">
+            <span class="label">Picture on the screen</span>
+            <div class="row">
+              <img id="ed-pic" class="preview" alt="Picture chosen for the screen" hidden>
+              <label class="filebtn"><input type="file" id="ed-pic-file" accept="image/*"><span id="ed-pic-choose">Choose picture</span></label>
+              <button type="button" id="ed-pic-remove" hidden>Remove picture</button>
+            </div>
+            <p id="ed-pic-err" class="hint status" role="alert" data-state="failed" hidden></p>
+          </div>
+          <div class="field">
+            <span class="label">Picture on the key</span>
+            <div class="row">
+              <img id="ed-thumb" class="preview" alt="Picture chosen for the key" hidden>
+              <label class="filebtn"><input type="file" id="ed-thumb-file" accept="image/*"><span>Choose key picture</span></label>
+              <button type="button" id="ed-thumb-reset" hidden>Match the screen picture</button>
+            </div>
+            <p class="hint">Optional. Without one, the key shows the screen picture.</p>
+            <p id="ed-thumb-err" class="hint status" role="alert" data-state="failed" hidden></p>
+          </div>
+          <div class="field">
+            <span class="label">Position</span>
+            <div class="row">
+              <button type="button" id="ed-earlier">Move earlier</button>
+              <button type="button" id="ed-later">Move later</button>
+              <span id="ed-pos" class="hint" role="status"></span>
+            </div>
+          </div>
+          <p id="ed-status" class="status" role="status" aria-live="polite" data-state="idle"></p>
+          <div class="row">
+            <button type="button" class="primary" id="ed-save">Save</button>
+            <button type="button" id="ed-cancel">Cancel</button>
+            <button type="button" class="danger" id="ed-delete">Delete</button>
+          </div>
+          <div class="row" id="ed-delete-confirm" hidden>
+            <button type="button" class="danger" id="ed-delete-yes">Yes, delete it</button>
+            <button type="button" id="ed-delete-no">Keep it</button>
+          </div>
+        </section>
+      </section>
+
+      <div id="side">
+        <div id="view-auto" class="view" hidden>
+          <section class="card" aria-labelledby="auto-title">
+            <div class="card-head">
+              <div>
+                <h2 id="auto-title">Auto next</h2>
+                <p class="hint">One message after another, in order.</p>
+              </div>
+              <button type="button" class="pill toggle" id="auto-toggle" aria-pressed="false" disabled><span id="auto-toggle-ico" aria-hidden="true"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5l11 7-11 7z"/></svg></span><span id="auto-toggle-text">Start</span></button>
+            </div>
+            <div id="auto-dots" class="dots" aria-hidden="true"></div>
+            <div class="stepper">
+              <button type="button" class="icon" id="auto-minus" aria-label="Fewer seconds" disabled><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/></svg></button>
+              <div class="big-number">
+                <input id="auto-input" type="number" inputmode="numeric" step="1" disabled aria-label="Seconds between messages" aria-describedby="auto-status">
+                <span>sec</span>
+              </div>
+              <button type="button" class="icon" id="auto-plus" aria-label="More seconds" disabled><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg></button>
+            </div>
+            <p id="auto-status" class="hint status" role="status" aria-live="polite" data-state="idle">Waiting for the screen</p>
+          </section>
+
+          <section class="card" aria-labelledby="timing-title">
+            <h2 id="timing-title"><label for="timing-input">Stay on screen</label></h2>
+            <p class="hint">How long one message stays up. Not used while auto next is on.</p>
+            <div class="stepper">
+              <button type="button" class="icon" id="timing-minus" aria-label="Fewer seconds" disabled><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/></svg></button>
+              <div class="big-number">
+                <input id="timing-input" type="number" inputmode="numeric" step="1" disabled aria-describedby="timing-status">
+                <span>sec</span>
+              </div>
+              <button type="button" class="icon" id="timing-plus" aria-label="More seconds" disabled><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg></button>
+            </div>
+            <p id="timing-status" class="hint status" role="status" aria-live="polite" data-state="idle">Waiting for the screen</p>
+          </section>
+        </div>
+
+        <div id="view-setup" class="view" hidden>
+          <div class="pair">
+            <section class="card mini" aria-labelledby="link-title">
+              <p id="setup-link" class="mini-big small" role="status">Linking</p>
+              <h2 id="link-title" class="mini-title">Link</h2>
+              <p id="setup-route" class="hint"></p>
+            </section>
+            <section class="card mini" aria-labelledby="count-title">
+              <p id="setup-count" class="mini-big">&ndash;</p>
+              <h2 id="count-title" class="mini-title">Messages</h2>
+              <p class="hint">saved on the screen</p>
+            </section>
+          </div>
+          <section class="card" aria-labelledby="keys-title">
+            <h2 id="keys-title">Keyboard or keypad</h2>
+            <p class="hint">Number keys 1 to 8 show the first eight messages. 9, 0 or Backspace clears the screen. The page has to be in front for the keys to reach it.</p>
+          </section>
+          <section class="card" aria-labelledby="safe-title">
+            <h2 id="safe-title">Use it safely</h2>
+            <p class="hint">Made for fun, on private property. Rear facing screens can be illegal on public roads, so check your local laws before using one on a road.</p>
+          </section>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="credit">Made by <a href="https://www.instagram.com/regandyvette/" target="_blank" rel="noopener">@regandyvette</a></p>
+</main>
+
+<nav id="tabs" aria-label="Sections">
+  <button type="button" data-tab="remote" aria-pressed="true"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="6" height="6" rx="1.5"/><rect x="14" y="4" width="6" height="6" rx="1.5"/><rect x="4" y="14" width="6" height="6" rx="1.5"/><rect x="14" y="14" width="6" height="6" rx="1.5"/></svg><span>Remote</span></button>
+  <button type="button" data-tab="auto" aria-pressed="false"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M17 3l3 3-3 3"/><path d="M4 11V9a3 3 0 0 1 3-3h13"/><path d="M7 21l-3-3 3-3"/><path d="M20 13v2a3 3 0 0 1-3 3H4"/></svg><span>Auto</span></button>
+  <button type="button" data-tab="setup" aria-pressed="false"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9"/><path d="M17 7h3"/><circle cx="15" cy="7" r="2"/><path d="M4 17h3"/><path d="M11 17h9"/><circle cx="9" cy="17" r="2"/></svg><span>Setup</span></button>
+</nav>
+
+<script src="vendor/peerjs.min.js"></script>
+<script src="shared.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  var $ = function (id) { return document.getElementById(id); };
+  var linkEl = $('link');
+  var keysEl = $('keys');
+  var noticeEl = $('notice');
+  var resultEl = $('result');
+  var nowEl = $('now');
+  var nowText = $('now-text');
+  var editNote = $('edit-note');
+  var EDIT_HINT = 'Editing. Tap a key to change it.';
+  // What the screen last said is showing, and when that arrived, so the
+  // countdown can run between messages. The screen stays the authority:
+  // every state it sends replaces this.
+  var nowInfo = null;           // { remainingMs, totalMs, at }
+  var ICON_X = '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12"/><path d="M18 6L6 18"/></svg>';
+  var ICON_PLAY = '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5l11 7-11 7z"/></svg>';
+  var ICON_PAUSE = '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5v14"/><path d="M15 5v14"/></svg>';
+  var ICON_PLUS = '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg>';
+  var ICON_PENCIL = '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16v4z"/><path d="M13 7l4 4"/></svg>';
+  // ---- Copies of what the screen owns ------------------------------------
+  // The screen is the only writer. These are copies, also kept in this
+  // device's storage so the last known keys can show (greyed) while the
+  // link is down.
+  // Invalidation trigger: every "state" from the screen carries the library
+  // version; a different number means refetch. A fresh "welcome" on every
+  // link replaces everything.
+  var library = null;
+  var settings = null;
+  var activeId = '';
+  var CACHE_KEY = 'remote.cache';
+
+  // Link state: connecting | live | reconnecting | refused. Never a boolean.
+  var link = 'connecting';
+  var roomId = '';
+  var linkText = '';
+  var peer = null;
+  var conn = null;
+  var relinkTimer = null;
+  var handshakeTimer = null;
+  var beat = null;
+  var lastHeard = 0;
+  var backoff = 1000;
+  var route = '';
+
+  function setLink(next, text) {
+    link = next;
+    linkText = text || '';
+    linkEl.dataset.tone = next === 'live' ? 'ok' : (next === 'refused' ? 'error' : 'warn');
+    linkEl.textContent = next === 'live' ? 'Screen linked'
+      : next === 'connecting' ? 'Linking'
+      : next === 'reconnecting' ? 'Looking for the screen'
+      : 'Cannot link';
+    renderKeys();
+    renderSetup();
+    renderSettings();
+  }
+
+  // ---- Requests to the screen --------------------------------------------
+  // One request is one id. A retry reuses the id, so the screen acts once.
+  var pending = new Map();
+  var TIMEOUT_MS = 3000;
+
+  function failPending(text) {
+    pending.forEach(function (p) { clearTimeout(p.timer); p.reject(new Error(text)); });
+    pending.clear();
+  }
+
+  function sendOnce(id, op, args, timeoutMs) {
+    return new Promise(function (resolve, reject) {
+      if (link !== 'live' || !conn || !conn.open) {
+        reject(new Error('Not linked to the screen right now.'));
+        return;
+      }
+      var timer = setTimeout(function () {
+        pending.delete(id);
+        reject(new Error('The screen did not answer in time.'));
+      }, timeoutMs || TIMEOUT_MS);
+      pending.set(id, { resolve: resolve, reject: reject, timer: timer });
+      try { conn.send({ t: 'req', id: id, op: op, args: args || {} }); }
+      catch (e) { clearTimeout(timer); pending.delete(id); reject(new Error('Not linked to the screen right now.')); }
+    });
+  }
+
+  // attempts 1: a press. It is never sent again later, because a meme that
+  // shows up seconds late is worse than one that does not show.
+  // attempts 3: a setting, safe to repeat with the same id.
+  function request(op, args, attempts, onRetry, timeoutMs) {
+    var id = CS.newId();
+    var n = 0;
+    function go() {
+      n += 1;
+      return sendOnce(id, op, args, timeoutMs).catch(function (e) {
+        if (n >= attempts || link !== 'live') throw e;
+        if (onRetry) onRetry(n + 1);
+        return go();
+      });
+    }
+    return go();
+  }
+
+  // ---- Linking to the screen ---------------------------------------------
+  function teardown() {
+    clearTimeout(relinkTimer);
+    clearTimeout(handshakeTimer);
+    clearInterval(beat);
+    failPending('The link dropped before the screen answered.');
+    var oldConn = conn;
+    var oldPeer = peer;
+    conn = null;
+    peer = null;
+    if (oldConn) { try { oldConn.close(); } catch (e) { /* gone */ } }
+    if (oldPeer) { try { oldPeer.destroy(); } catch (e) { /* gone */ } }
+  }
+
+  function relinkSoon(text) {
+    teardown();
+    setLink('reconnecting', text);
+    relinkTimer = setTimeout(linkHome, backoff);
+    backoff = Math.min(backoff * 2, 10000);
+  }
+
+  function applyState(state) {
+    if (!state) return;
+    settings = state.settings;
+    activeId = state.now ? state.now.itemId : '';
+    nowInfo = state.now ? { remainingMs: state.now.remainingMs, totalMs: state.now.totalMs, at: Date.now() } : null;
+    if (library && state.libraryVersion !== library.version && conn) {
+      try { conn.send({ t: 'get_library' }); } catch (e) { /* heartbeat handles it */ }
+    }
+    saveCache();
+    markActive();
+    renderSettings();
+    renderNow();
+  }
+
+  function saveCache() {
+    if (library && settings) CS.set(CACHE_KEY, { library: library, settings: settings }).catch(function () {});
+  }
+
+  function onHomeData(mine, msg) {
+    if (mine !== peer || !msg || typeof msg !== 'object') return;
+    lastHeard = Date.now();
+    if (msg.t === 'welcome') {
+      clearTimeout(handshakeTimer);
+      library = msg.library;
+      backoff = 1000;
+      pruneThumbs();
+      setLink('live');
+      applyState(msg.state);
+      renderKeys();
+      clearInterval(beat);
+      beat = setInterval(function () {
+        if (mine !== peer) return;
+        if (Date.now() - lastHeard > CS.SILENCE_MS) { relinkSoon('The link went quiet. Trying again.'); return; }
+        try { conn.send({ t: 'ping' }); } catch (e) { relinkSoon('The link dropped. Trying again.'); }
+      }, CS.HEARTBEAT_MS);
+      setTimeout(function () {
+        if (mine !== peer || !conn) return;
+        CS.route(conn.peerConnection).then(function (r) { route = r; renderSetup(); });
+      }, 1500);
+    } else if (msg.t === 'refused') {
+      teardown();
+      setLink('refused', msg.reason === 'version'
+        ? 'The screen and this remote are on different versions. Reload both pages.'
+        : 'The screen turned this remote away. Reload both pages.');
+    } else if (link !== 'live') {
+      // Nothing else counts before the welcome.
+    } else if (msg.t === 'state') {
+      applyState(msg.state);
+    } else if (msg.t === 'library') {
+      library = msg.library;
+      saveCache();
+      pruneThumbs();
+      renderKeys();
+    } else if (msg.t === 'res') {
+      var p = pending.get(msg.id);
+      if (p) {
+        clearTimeout(p.timer);
+        pending.delete(msg.id);
+        applyState(msg.state);
+        p.resolve(msg);
+      }
+    }
+  }
+
+  function linkHome() {
+    teardown();
+    if (!roomId) return;
+    if (link !== 'reconnecting') setLink('connecting');
+    lastHeard = Date.now();
+    var mine = peer = new Peer({ debug: 0 });
+    handshakeTimer = setTimeout(function () {
+      if (mine === peer) relinkSoon('No answer from the screen. Is the iPad on, with the screen page open?');
+    }, 8000);
+    mine.on('open', function () {
+      if (mine !== peer) return;
+      var c = conn = mine.connect(roomId, { reliable: true });
+      c.on('open', function () {
+        if (mine === peer) c.send({ t: 'hello', v: CS.PROTOCOL });
+      });
+      c.on('data', function (msg) { onHomeData(mine, msg); });
+      c.on('close', function () { if (mine === peer) relinkSoon('The link closed. Trying again.'); });
+      c.on('error', function () { if (mine === peer) relinkSoon('The link dropped. Trying again.'); });
+    });
+    mine.on('error', function (e) {
+      if (mine !== peer) return;
+      relinkSoon(e.type === 'peer-unavailable'
+        ? 'Cannot find the screen. Is the iPad on, with the screen page open?'
+        : 'Cannot reach the matchmaking service. Check this device has internet.');
+    });
+  }
+
+  function comeBack() {
+    if (document.hidden || !roomId) return;
+    if (link === 'reconnecting' || link === 'connecting' || link === 'refused') {
+      backoff = 1000;
+      linkHome();
+    } else if (link === 'live' && Date.now() - lastHeard > CS.SILENCE_MS) {
+      backoff = 1000;
+      relinkSoon('Waking the link up.');
+    }
+  }
+  document.addEventListener('visibilitychange', comeBack);
+  window.addEventListener('pageshow', comeBack);
+  window.addEventListener('online', comeBack);
+
+  // ---- Keys --------------------------------------------------------------
+  // Send state for a press: idle | in_flight | succeeded | failed.
+  var pressToken = 0;
+
+  function setResult(state, text) {
+    resultEl.dataset.state = state;
+    resultEl.textContent = text;
+    // While editing there is no status line, so the news shows in the
+    // editing bar instead.
+    if (mode === 'edit') {
+      editNote.dataset.state = text ? state : 'idle';
+      editNote.textContent = text || EDIT_HINT;
+    }
+    renderNow();
+  }
+
+  function labelFor(item) {
+    return item.label || item.text || 'Untitled';
+  }
+
+  // Key pictures for uploaded messages come from the screen once and are
+  // kept in this device's storage.
+  // Invalidation trigger: a key picture is named by its fingerprint, so a
+  // changed picture has a new name. Whenever a library arrives, pictures no
+  // message uses are dropped and their browser addresses released.
+  var thumbStore = {};          // ref -> { type, bytes }, saved as 'remote.thumbs'
+  var thumbUrls = new Map();    // ref -> object URL
+  var thumbLoads = new Map();   // ref -> promise, so one picture is asked for once
+  var THUMBS_KEY = 'remote.thumbs';
+
+  function thumbUrl(ref) {
+    if (thumbUrls.has(ref)) return Promise.resolve(thumbUrls.get(ref));
+    if (thumbStore[ref]) {
+      var made = URL.createObjectURL(new Blob([thumbStore[ref].bytes], { type: thumbStore[ref].type }));
+      thumbUrls.set(ref, made);
+      return Promise.resolve(made);
+    }
+    if (thumbLoads.has(ref)) return thumbLoads.get(ref);
+    var load = request('get_picture', { ref: ref }, 2, null, 8000).then(function (res) {
+      thumbLoads.delete(ref);
+      if (!res.ok || !res.data) throw new Error(res.error || 'no picture');
+      thumbStore[ref] = { type: res.data.type, bytes: res.data.bytes };
+      CS.set(THUMBS_KEY, thumbStore).catch(function () {});
+      return thumbUrl(ref);
+    }, function (e) { thumbLoads.delete(ref); throw e; });
+    thumbLoads.set(ref, load);
+    return load;
+  }
+
+  function pruneThumbs() {
+    if (!library) return;
+    var used = new Set();
+    library.order.forEach(function (id) {
+      var item = library.items[id] || {};
+      if (item.thumb && item.thumb.ref) used.add(item.thumb.ref);
+    });
+    var changed = false;
+    Object.keys(thumbStore).forEach(function (ref) {
+      if (!used.has(ref)) { delete thumbStore[ref]; changed = true; }
+    });
+    thumbUrls.forEach(function (url, ref) {
+      if (!used.has(ref)) { URL.revokeObjectURL(url); thumbUrls.delete(ref); }
+    });
+    if (changed) CS.set(THUMBS_KEY, thumbStore).catch(function () {});
+  }
+
+  function fillThumb(img, item) {
+    if (item.thumb && item.thumb.ref) {
+      thumbUrl(item.thumb.ref).then(function (url) { img.src = url; }, function () { img.remove(); });
+      return true;
+    }
+    if (item.picture && item.picture.kind === 'url') { img.src = item.picture.src; return true; }
+    return false;
+  }
+
+  // What a tap on a key does: remote (show it) | edit (open it to change).
+  var mode = 'remote';
+  var editToggle = $('edit-toggle');
+
+  function renderKeys() {
+    var stale = link !== 'live';
+    keysEl.dataset.stale = String(stale);
+    $('edit-bar').hidden = mode !== 'edit';
+    editToggle.disabled = mode !== 'edit' && (stale || !library);
+    editToggle.setAttribute('aria-pressed', String(mode === 'edit'));
+    editToggle.setAttribute('aria-label', mode === 'edit' ? 'Done editing' : 'Edit messages');
+    $('add-top').disabled = stale || !library;
+    if (!library) {
+      keysEl.textContent = '';
+      delete keysEl.dataset.signature;
+      noticeEl.hidden = false;
+      noticeEl.dataset.state = link === 'refused' ? 'failed' : 'warn';
+      noticeEl.textContent = linkText || 'Getting the messages from the screen.';
+      return;
+    }
+    noticeEl.hidden = !stale && library.order.length > 0;
+    if (stale) {
+      noticeEl.dataset.state = link === 'refused' ? 'failed' : 'warn';
+      noticeEl.textContent = (linkText || 'Not linked right now.') + ' Showing the last known keys.';
+    } else if (library.order.length === 0) {
+      noticeEl.dataset.state = 'warn';
+      noticeEl.textContent = mode === 'edit'
+        ? 'No messages yet. Tap the plus key to add the first one.'
+        : 'There are no messages on the screen yet. Tap Edit messages to add one.';
+    }
+    // Rebuild only when the set of cards changed, so pictures are not
+    // fetched again on every state update.
+    var signature = library.version + ':' + mode + ':' + library.order.join(',');
+    if (keysEl.dataset.signature === signature) { markActive(); return; }
+    keysEl.dataset.signature = signature;
+    keysEl.textContent = '';
+    library.order.forEach(function (id, index) {
+      var item = library.items[id];
+      if (!item) return;
+      var cell = document.createElement('div');
+      cell.className = 'cell';
+      cell.dataset.id = id;
+      var button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'key';
+      button.setAttribute('aria-label', (mode === 'edit' ? 'Change ' : 'Show ') + labelFor(item));
+      var img = document.createElement('img');
+      img.alt = '';
+      img.onerror = function () { img.remove(); };
+      if (fillThumb(img, item)) {
+        button.appendChild(img);
+      } else {
+        var words = document.createElement('span');
+        words.className = 'key-pic-text';
+        words.textContent = item.text || '';
+        button.appendChild(words);
+      }
+      if (index < 8) {
+        var number = document.createElement('span');
+        number.className = 'key-number';
+        number.textContent = String(index + 1);
+        button.appendChild(number);
+      }
+      if (mode === 'edit') {
+        var pen = document.createElement('span');
+        pen.className = 'key-edit';
+        pen.innerHTML = ICON_PENCIL;
+        button.appendChild(pen);
+      }
+      var label = document.createElement('span');
+      label.className = 'key-label';
+      label.textContent = labelFor(item);
+      button.addEventListener('click', function () {
+        if (mode === 'edit') openEditor(id); else press(id);
+      });
+      cell.appendChild(button);
+      cell.appendChild(label);
+      keysEl.appendChild(cell);
+    });
+    if (mode !== 'edit') {
+      // Clear is the last key, like the real keypad's 9th key.
+      var clearCell = document.createElement('div');
+      clearCell.className = 'cell';
+      var clearKey = document.createElement('button');
+      clearKey.type = 'button';
+      clearKey.className = 'key clear';
+      clearKey.setAttribute('aria-label', 'Clear the screen');
+      clearKey.innerHTML = ICON_X;
+      clearKey.addEventListener('click', clearScreen);
+      var clearLabel = document.createElement('span');
+      clearLabel.className = 'key-label';
+      clearLabel.textContent = 'Clear';
+      clearCell.appendChild(clearKey);
+      clearCell.appendChild(clearLabel);
+      keysEl.appendChild(clearCell);
+    }
+    if (mode === 'edit') {
+      var addCell = document.createElement('div');
+      addCell.className = 'cell';
+      var add = document.createElement('button');
+      add.type = 'button';
+      add.className = 'key add';
+      add.setAttribute('aria-label', 'Add a message');
+      add.innerHTML = ICON_PLUS;
+      add.addEventListener('click', function () { openEditor(''); });
+      var addLabel = document.createElement('span');
+      addLabel.className = 'key-label';
+      addLabel.textContent = 'Add';
+      addCell.appendChild(add);
+      addCell.appendChild(addLabel);
+      keysEl.appendChild(addCell);
+    }
+    markActive();
+  }
+
+  function markActive() {
+    var cells = keysEl.querySelectorAll('.cell');
+    for (var i = 0; i < cells.length; i += 1) {
+      var on = String(Boolean(cells[i].dataset.id) && cells[i].dataset.id === activeId);
+      cells[i].dataset.active = on;
+      cells[i].firstChild.dataset.active = on;
+    }
+    renderDots();
+  }
+
+  function press(id) {
+    if (!library || !library.items[id]) return;
+    var token = ++pressToken; // a newer press wins over an older one
+    setResult('in_flight', 'Sending');
+    request('show', { itemId: id }, 1).then(function (res) {
+      if (token !== pressToken) return;
+      // "Showing" comes from the screen's own answer, nothing else.
+      if (res.ok) setResult('succeeded', 'On the screen now.');
+      else setResult('failed', 'Not shown: ' + (res.error || 'the screen said no.'));
+    }, function (e) {
+      if (token === pressToken) setResult('failed', 'Not shown. ' + e.message + ' Tap again to retry.');
+    });
+  }
+
+  function clearScreen() {
+    var token = ++pressToken;
+    setResult('in_flight', 'Clearing');
+    request('clear', {}, 1).then(function (res) {
+      if (token !== pressToken) return;
+      if (res.ok) setResult('succeeded', 'Screen cleared.');
+      else setResult('failed', 'Not cleared: ' + (res.error || 'the screen said no.'));
+    }, function (e) {
+      if (token === pressToken) setResult('failed', 'Not cleared. ' + e.message + ' Tap again to retry.');
+    });
+  }
+
+  document.addEventListener('keydown', function (e) {
+    if (e.repeat || e.metaKey || e.ctrlKey || e.altKey || !library || mode === 'edit') return;
+    if (/^[1-8]$/.test(e.key)) {
+      var id = library.order[Number(e.key) - 1];
+      if (id) { e.preventDefault(); press(id); }
+    } else if (e.key === '9' || e.key === '0' || e.key === 'Backspace') {
+      e.preventDefault();
+      clearScreen();
+    }
+  });
+
+  // ---- Auto next and display time ----------------------------------------
+  // Each has its own save state: idle | in_flight | retrying | succeeded |
+  // failed. The number shown is the screen's value, never a guess.
+  function numberSetting(opts) {
+    var input = opts.input;
+    var status = opts.status;
+    var state = 'idle';
+    var token = 0;
+    var debounce = null;
+
+    function set(next, text) {
+      state = next;
+      status.dataset.state = next;
+      status.textContent = text;
+    }
+    function check() {
+      var rawValue = input.value.trim();
+      var n = Number(rawValue);
+      if (rawValue === '' || !Number.isInteger(n)) return { error: 'Type a whole number of seconds, like ' + opts.example + '.' };
+      if (n < opts.min) return { error: 'Too short. The least is ' + opts.min + (opts.min === 1 ? ' second.' : ' seconds.') };
+      if (n > CS.MAX_SECONDS) return { error: 'Too long. The most is ' + CS.MAX_SECONDS + ' seconds.' };
+      return { value: n };
+    }
+    function save(force) {
+      clearTimeout(debounce);
+      if (!settings) return;
+      var c = check();
+      if (c.error) { input.setAttribute('aria-invalid', 'true'); set('failed', c.error); return; }
+      input.setAttribute('aria-invalid', 'false');
+      if (!force && c.value === opts.current() && state !== 'failed') return;
+      var mine = ++token; // the latest change wins
+      set('in_flight', 'Saving');
+      opts.send(c.value, function (attempt) {
+        if (mine === token) set('retrying', 'Retrying (' + attempt + ' of 3)');
+      }).then(function (res) {
+        if (mine !== token) return;
+        // Saved only once the screen says so.
+        if (res.ok) { render(); set('succeeded', opts.describe()); }
+        else set('failed', 'Not saved: ' + (res.error || 'the screen said no.'));
+      }, function (e) {
+        if (mine === token) set('failed', 'Not saved. ' + e.message);
+      });
+    }
+    function render() {
+      var live = link === 'live' && Boolean(settings);
+      input.disabled = !live;
+      input.min = opts.min;
+      input.max = CS.MAX_SECONDS;
+      if (settings && document.activeElement !== input) input.value = opts.current();
+      if (!settings) set('idle', 'Waiting for the screen');
+      else if (!live) set('idle', 'Not linked right now. Last known: ' + opts.describe());
+      else if (state === 'idle' || state === 'succeeded') {
+        // Keep the words true when the screen changes the setting itself
+        // (for example the Clear key stopping auto next).
+        if (status.textContent !== opts.describe()) set(state, opts.describe());
+      } else if (status.textContent.indexOf('Waiting') === 0 || status.textContent.indexOf('Not linked') === 0) set('idle', opts.describe());
+    }
+    input.addEventListener('input', function () {
+      clearTimeout(debounce);
+      var c = check();
+      input.setAttribute('aria-invalid', String(Boolean(c.error)));
+      if (c.error) { set('failed', c.error); return; }
+      debounce = setTimeout(function () { save(false); }, 700);
+    });
+    input.addEventListener('blur', function () { save(false); });
+    // Typing a number here must not also fire the message keys.
+    input.addEventListener('keydown', function (e) {
+      e.stopPropagation();
+      if (e.key === 'Enter') input.blur();
+    });
+    return { render: render, save: save, value: function () { return check(); } };
+  }
+
+  var autoToggle = $('auto-toggle');
+  var wantAuto = null; // the state the next save should send; null = keep
+
+  var autoSetting = numberSetting({
+    input: $('auto-input'),
+    status: $('auto-status'),
+    min: CS.MIN_AUTO_SECONDS,
+    example: 10,
+    current: function () { return settings.autoSeconds; },
+    describe: function () {
+      return settings.autoState === 'on'
+        ? 'Running, a new message every ' + settings.autoSeconds + ' seconds. Clear stops it.'
+        : 'Stopped.';
+    },
+    send: function (seconds, onRetry) {
+      var state = wantAuto || settings.autoState;
+      wantAuto = null;
+      return request('set_auto', { state: state, seconds: seconds }, 3, onRetry);
+    },
+  });
+
+  var timingSetting = numberSetting({
+    input: $('timing-input'),
+    status: $('timing-status'),
+    min: CS.MIN_SECONDS,
+    example: 30,
+    current: function () { return settings.seconds; },
+    describe: function () {
+      return settings.seconds + (settings.seconds === 1 ? ' second' : ' seconds') + ' per message.';
+    },
+    send: function (seconds, onRetry) {
+      return request('set_seconds', { seconds: seconds }, 3, onRetry);
+    },
+  });
+
+  autoToggle.addEventListener('click', function () {
+    if (!settings) return;
+    wantAuto = settings.autoState === 'on' ? 'off' : 'on';
+    autoSetting.save(true);
+  });
+
+  function renderSettings() {
+    autoSetting.render();
+    timingSetting.render();
+    var on = Boolean(settings) && settings.autoState === 'on';
+    var live = link === 'live' && Boolean(settings);
+    autoToggle.disabled = !live;
+    autoToggle.setAttribute('aria-pressed', String(on));
+    $('auto-toggle-text').textContent = on ? 'Stop' : 'Start';
+    $('auto-toggle-ico').innerHTML = on ? ICON_PAUSE : ICON_PLAY;
+    $('auto-minus').disabled = !live;
+    $('auto-plus').disabled = !live;
+    $('timing-minus').disabled = !live;
+    $('timing-plus').disabled = !live;
+    renderDots();
+    renderNow();
+  }
+
+  // A round plus or minus button moves a number to the next multiple of 5
+  // (never below its least) and then saves it the same way typing does.
+  function stepper(minusId, plusId, input, min) {
+    function nudge(dir) {
+      if (input.disabled) return;
+      var n = Number(input.value);
+      if (!Number.isInteger(n)) n = min;
+      var next = dir > 0 ? (Math.floor(n / 5) + 1) * 5 : (Math.ceil(n / 5) - 1) * 5;
+      next = Math.max(min, Math.min(CS.MAX_SECONDS, next));
+      if (next === n) return;
+      input.value = String(next);
+      input.dispatchEvent(new Event('input'));
+    }
+    $(minusId).addEventListener('click', function () { nudge(-1); });
+    $(plusId).addEventListener('click', function () { nudge(1); });
+  }
+  stepper('auto-minus', 'auto-plus', $('auto-input'), CS.MIN_AUTO_SECONDS);
+  stepper('timing-minus', 'timing-plus', $('timing-input'), CS.MIN_SECONDS);
+
+  // One dot per message; the lit one is on the screen now.
+  function renderDots() {
+    var el = $('auto-dots');
+    if (!library) { el.textContent = ''; return; }
+    if (el.children.length !== library.order.length) {
+      el.textContent = '';
+      library.order.forEach(function () { el.appendChild(document.createElement('span')); });
+    }
+    for (var i = 0; i < el.children.length; i += 1) {
+      el.children[i].dataset.on = String(library.order[i] === activeId);
+    }
+  }
+
+  // The line under the title: what is on the screen and for how long. A
+  // press in progress, or a failure, takes the line until the next action.
+  // The countdown runs on this page's clock between the screen's messages
+  // and is replaced by every state the screen sends.
+  function renderNow() {
+    var item = library && activeId ? library.items[activeId] : null;
+    var left = 0;
+    if (nowInfo && item) left = Math.max(0, nowInfo.remainingMs - (Date.now() - nowInfo.at));
+    var feedback = resultEl.dataset.state;
+    var text = '';
+    var tone = 'now';
+    if (mode === 'edit') {
+      text = '';
+    } else if (feedback === 'in_flight') {
+      text = resultEl.textContent;
+      tone = 'warn';
+    } else if (feedback === 'failed') {
+      text = resultEl.textContent;
+      tone = 'error';
+    } else if (item && left > 0) {
+      text = labelFor(item) + ' \u00b7 ' + Math.ceil(left / 1000) + 's';
+    } else if (settings && settings.autoState === 'on') {
+      text = 'Auto next running';
+      tone = 'idle';
+    }
+    nowEl.hidden = !text;
+    nowEl.dataset.tone = tone;
+    nowText.textContent = text;
+  }
+  setInterval(renderNow, 1000);
+
+  // ---- Setup -------------------------------------------------------------
+  function renderSetup() {
+    $('setup-link').textContent = link === 'live' ? 'Linked'
+      : link === 'connecting' ? 'Linking'
+      : link === 'reconnecting' ? 'Looking'
+      : 'No link';
+    $('setup-route').textContent = link !== 'live' ? (linkText || '')
+      : route === 'direct' ? 'Direct, same network.'
+      : route === 'internet' ? 'Via the internet. Uses a little data.'
+      : route === 'relay' ? 'Via a relay. Uses data.'
+      : '';
+    $('setup-count').textContent = library ? String(library.order.length) : '\u2013';
+  }
+
+  // ---- Editing the messages ---------------------------------------------
+  // The screen is the only writer. Save sends the pictures first, then the
+  // message, and says "saved" only after the screen answers that it stored
+  // it. Nothing is ever shown as queued: with no link, Save fails and says
+  // so, and the form stays as it was.
+  // Save state: idle | reading | sending | saving | saved | failed.
+  var editorEl = $('editor');
+  var padEl = $('pad');
+  var edStatus = $('ed-status');
+  var edState = 'idle';
+  var edToken = 0;
+  var draft = null;
+  var draftUrls = [];
+  var MAX_SIDE = 2048;
+  var THUMB_SIDE = 256;
+
+  function setEd(state, text) {
+    edState = state;
+    edStatus.dataset.state = state === 'saved' ? 'succeeded' : state;
+    edStatus.textContent = text || '';
+    var busy = state === 'reading' || state === 'sending' || state === 'saving';
+    $('ed-save').disabled = busy;
+    $('ed-delete').disabled = busy;
+    $('ed-save').textContent = busy ? 'Working' : 'Save';
+  }
+
+  function fieldError(id, text) {
+    var el = $(id);
+    el.textContent = text || '';
+    el.hidden = !text;
+  }
+
+  function tempUrl(bytes, type) {
+    var url = URL.createObjectURL(new Blob([bytes], { type: type }));
+    draftUrls.push(url);
+    return url;
+  }
+
+  function loadImage(url) {
+    return new Promise(function (resolve, reject) {
+      var img = new Image();
+      img.onload = function () { resolve(img); };
+      img.onerror = function () { reject(new Error('That file is not a picture this can use.')); };
+      img.src = url;
+    });
+  }
+
+  function canvasBytes(canvas, type) {
+    return new Promise(function (resolve, reject) {
+      canvas.toBlob(function (blob) {
+        if (!blob) { reject(new Error('This browser could not prepare the picture.')); return; }
+        blob.arrayBuffer().then(function (bytes) { resolve({ type: blob.type || type, bytes: bytes }); }, reject);
+      }, type, 0.9);
+    });
+  }
+
+  function withPrint(pic) {
+    return CS.fingerprint(pic.bytes).then(function (ref) { pic.ref = ref; return pic; });
+  }
+
+  // A square key picture, cut from the top middle like the keys show it.
+  function makeThumb(img, type) {
+    var side = Math.min(img.naturalWidth, img.naturalHeight);
+    var canvas = document.createElement('canvas');
+    canvas.width = canvas.height = THUMB_SIDE;
+    canvas.getContext('2d').drawImage(img, (img.naturalWidth - side) / 2, 0, side, side, 0, 0, THUMB_SIDE, THUMB_SIDE);
+    return canvasBytes(canvas, type === 'image/jpeg' ? 'image/jpeg' : 'image/png').then(withPrint);
+  }
+
+  // Reads a chosen file into what gets sent. Moving pictures (GIF) go as
+  // they are. Still pictures are shrunk to 2048px on the long side, which
+  // is more than the iPad can show, so phone photos upload fast.
+  function readPicture(file) {
+    if (!/^image\//.test(file.type)) return Promise.reject(new Error('That file is not a picture.'));
+    var url = URL.createObjectURL(file);
+    return loadImage(url).then(function (img) {
+      var keepAsIs = file.type === 'image/gif';
+      var main;
+      if (keepAsIs) {
+        if (file.size > CS.MAX_PICTURE_BYTES) throw new Error('That moving picture is too big. The most is 15MB.');
+        main = file.arrayBuffer().then(function (bytes) { return { type: 'image/gif', bytes: bytes }; });
+      } else {
+        var scale = Math.min(1, MAX_SIDE / Math.max(img.naturalWidth, img.naturalHeight));
+        var canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(img.naturalWidth * scale));
+        canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
+        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+        // PNG keeps see-through backgrounds; everything else becomes JPG.
+        main = canvasBytes(canvas, file.type === 'image/png' ? 'image/png' : 'image/jpeg');
+      }
+      return main.then(withPrint).then(function (pic) {
+        if (pic.bytes.byteLength > CS.MAX_PICTURE_BYTES) throw new Error('That picture is too big. The most is 15MB.');
+        return makeThumb(img, pic.type).then(function (thumb) {
+          pic.thumb = thumb;
+          return pic;
+        });
+      });
+    }).then(function (pic) { URL.revokeObjectURL(url); return pic; },
+      function (e) { URL.revokeObjectURL(url); throw e; });
+  }
+
+  function renderDraft() {
+    var pic = $('ed-pic');
+    var thumb = $('ed-thumb');
+    var hasPicture = Boolean(draft.newPicture || draft.picture);
+    // Screen picture preview.
+    if (draft.newPicture) {
+      pic.src = tempUrl(draft.newPicture.bytes, draft.newPicture.type);
+      pic.hidden = false;
+    } else if (draft.picture && draft.picture.kind === 'url') {
+      pic.src = draft.picture.src;
+      pic.hidden = false;
+    } else if (draft.picture && draft.picture.thumbRef) {
+      pic.hidden = true;
+      thumbUrl(draft.picture.thumbRef).then(function (url) { pic.src = url; pic.hidden = false; }, function () {});
+    } else {
+      pic.hidden = true;
+      pic.removeAttribute('src');
+    }
+    $('ed-pic-choose').textContent = hasPicture ? 'Change picture' : 'Choose picture';
+    $('ed-pic-remove').hidden = !hasPicture;
+    // Key picture preview.
+    var custom = Boolean(draft.newThumb || (draft.thumb && draft.thumb.custom));
+    $('ed-thumb-reset').hidden = !custom;
+    if (draft.newThumb) {
+      thumb.src = tempUrl(draft.newThumb.bytes, draft.newThumb.type);
+      thumb.hidden = false;
+    } else if (draft.thumb && draft.thumb.custom) {
+      thumb.hidden = true;
+      thumbUrl(draft.thumb.ref).then(function (url) { thumb.src = url; thumb.hidden = false; }, function () {});
+    } else if (draft.newPicture) {
+      thumb.src = tempUrl(draft.newPicture.thumb.bytes, draft.newPicture.thumb.type);
+      thumb.hidden = false;
+    } else if (!pic.hidden || (draft.picture && draft.picture.thumbRef)) {
+      thumb.hidden = true;
+      if (draft.picture && draft.picture.kind === 'url') { thumb.src = draft.picture.src; thumb.hidden = false; }
+      else thumbUrl(draft.picture.thumbRef).then(function (url) { thumb.src = url; thumb.hidden = false; }, function () {});
+    } else {
+      thumb.hidden = true;
+      thumb.removeAttribute('src');
+    }
+    var total = library.order.length + (draft.isNew ? 1 : 0);
+    $('ed-pos').textContent = 'Key ' + (draft.index + 1) + ' of ' + total;
+    $('ed-earlier').disabled = draft.index <= 0;
+    $('ed-later').disabled = draft.index >= total - 1;
+  }
+
+  function openEditor(id) {
+    var item = id ? library.items[id] : null;
+    draft = {
+      id: item ? item.id : CS.newId(),
+      isNew: !item,
+      baseVersion: library.version,
+      picture: item ? item.picture || null : null,
+      thumb: item ? item.thumb || null : null,
+      newPicture: null,
+      newThumb: null,
+      index: item ? library.order.indexOf(item.id) : library.order.length,
+    };
+    $('editor-title').textContent = item ? 'Change message' : 'New message';
+    $('ed-label').value = item ? item.label : '';
+    $('ed-text').value = item ? item.text || '' : '';
+    $('ed-delete').hidden = !item;
+    $('ed-delete-confirm').hidden = true;
+    fieldError('ed-label-err', '');
+    fieldError('ed-pic-err', '');
+    fieldError('ed-thumb-err', '');
+    $('ed-label').setAttribute('aria-invalid', 'false');
+    setEd('idle', '');
+    renderDraft();
+    padEl.hidden = true;
+    editorEl.hidden = false;
+    $('ed-label').focus();
+  }
+
+  function closeEditor() {
+    edToken += 1;
+    draft = null;
+    draftUrls.forEach(function (url) { URL.revokeObjectURL(url); });
+    draftUrls = [];
+    $('ed-pic-file').value = '';
+    $('ed-thumb-file').value = '';
+    editorEl.hidden = true;
+    padEl.hidden = false;
+    renderKeys();
+  }
+
+  function setMode(next) {
+    mode = next;
+    if (next === 'edit') showTab('remote');
+    setResult('idle', '');
+    renderKeys();
+  }
+  editToggle.addEventListener('click', function () {
+    if (!editorEl.hidden) closeEditor();
+    setMode(mode === 'edit' ? 'remote' : 'edit');
+  });
+  $('add-top').addEventListener('click', function () {
+    if (!library || link !== 'live') return;
+    if (mode !== 'edit') setMode('edit');
+    showTab('remote');
+    openEditor('');
+  });
+  $('edit-done').addEventListener('click', function () { setMode('remote'); });
+
+  function checkLabel() {
+    var value = $('ed-label').value.trim();
+    var error = !value ? 'Give the key a name, like Thanks.' : '';
+    $('ed-label').setAttribute('aria-invalid', String(Boolean(error)));
+    fieldError('ed-label-err', error);
+    return !error;
+  }
+  var labelDebounce = null;
+  $('ed-label').addEventListener('input', function () {
+    clearTimeout(labelDebounce);
+    labelDebounce = setTimeout(checkLabel, 500);
+  });
+  $('ed-label').addEventListener('blur', checkLabel);
+  // Typing in the editor must not fire the message keys.
+  editorEl.addEventListener('keydown', function (e) { e.stopPropagation(); });
+
+  function chooseFile(input, errId, apply) {
+    input.addEventListener('change', function () {
+      var file = input.files && input.files[0];
+      if (!file || !draft) return;
+      var mine = draft;
+      fieldError(errId, '');
+      setEd('reading', 'Reading the picture');
+      readPicture(file).then(function (pic) {
+        if (draft !== mine) return;
+        apply(pic);
+        setEd('idle', '');
+        renderDraft();
+      }, function (e) {
+        if (draft !== mine) return;
+        setEd('idle', '');
+        fieldError(errId, e.message);
+        input.value = '';
+      });
+    });
+  }
+  chooseFile($('ed-pic-file'), 'ed-pic-err', function (pic) { draft.newPicture = pic; });
+  // A key picture is always small and still: the 256px cut of the file.
+  chooseFile($('ed-thumb-file'), 'ed-thumb-err', function (pic) { draft.newThumb = pic.thumb; });
+
+  $('ed-pic-remove').addEventListener('click', function () {
+    draft.newPicture = null;
+    draft.picture = null;
+    if (draft.thumb && !draft.thumb.custom) draft.thumb = null;
+    $('ed-pic-file').value = '';
+    renderDraft();
+  });
+  $('ed-thumb-reset').addEventListener('click', function () {
+    draft.newThumb = null;
+    draft.thumb = draft.picture && draft.picture.thumbRef ? { ref: draft.picture.thumbRef, custom: false } : null;
+    $('ed-thumb-file').value = '';
+    renderDraft();
+  });
+  $('ed-earlier').addEventListener('click', function () { draft.index -= 1; renderDraft(); });
+  $('ed-later').addEventListener('click', function () { draft.index += 1; renderDraft(); });
+  $('ed-cancel').addEventListener('click', closeEditor);
+
+  // Sends one picture in pieces. Each piece is confirmed by the screen
+  // before the next goes, so the percent shown is real.
+  function uploadPicture(pic, onPiece) {
+    return request('has_picture', { ref: pic.ref }, 3, null, 8000).then(function (res) {
+      if (!res.ok) throw new Error(res.error);
+      var count = Math.ceil(pic.bytes.byteLength / CS.CHUNK_BYTES);
+      if (res.data && res.data.have) { onPiece(pic.bytes.byteLength); return; }
+      return request('pic_begin', { ref: pic.ref, type: pic.type, size: pic.bytes.byteLength }, 3, null, 8000)
+        .then(function (begun) {
+          if (!begun.ok) throw new Error(begun.error);
+          var i = 0;
+          function next() {
+            if (i >= count) return;
+            var piece = pic.bytes.slice(i * CS.CHUNK_BYTES, (i + 1) * CS.CHUNK_BYTES);
+            return request('pic_chunk', { ref: pic.ref, i: i, bytes: piece }, 3, null, 8000).then(function (ack) {
+              if (!ack.ok) throw new Error(ack.error);
+              onPiece(piece.byteLength);
+              i += 1;
+              return next();
+            });
+          }
+          return next();
+        })
+        .then(function () { return request('pic_end', { ref: pic.ref }, 3, null, 15000); })
+        .then(function (ended) { if (!ended.ok) throw new Error(ended.error); });
+    });
+  }
+
+  function saveDraft() {
+    if (!draft || edState === 'reading' || edState === 'sending' || edState === 'saving') return;
+    var label = $('ed-label').value.trim();
+    var text = $('ed-text').value.trim();
+    if (!checkLabel()) {
+      $('ed-label').scrollIntoView({ block: 'center' });
+      $('ed-label').focus();
+      setEd('failed', 'Not saved. Fix the name first.');
+      return;
+    }
+    if (!text && !draft.newPicture && !draft.picture) {
+      setEd('failed', 'Not saved. Add words, a picture, or both.');
+      $('ed-text').focus();
+      return;
+    }
+    var mine = draft;
+    var token = ++edToken;
+    var pic = draft.newPicture;
+    var customThumb = draft.newThumb;
+    var toSend = [];
+    if (pic) toSend.push(pic, pic.thumb);
+    if (customThumb) toSend.push(customThumb);
+    var total = toSend.reduce(function (sum, p) { return sum + p.bytes.byteLength; }, 0);
+    var sent = 0;
+    function onPiece(bytes) {
+      sent += bytes;
+      if (token === edToken) setEd('sending', 'Sending the picture: ' + Math.round(sent / total * 100) + '%');
+    }
+    if (toSend.length) setEd('sending', 'Sending the picture: 0%');
+    var chain = Promise.resolve();
+    toSend.forEach(function (p) {
+      chain = chain.then(function () { return uploadPicture(p, onPiece); });
+    });
+    chain.then(function () {
+      if (token !== edToken) return null;
+      var picture = pic ? { kind: 'blob', ref: pic.ref, thumbRef: pic.thumb.ref } : mine.picture;
+      var thumb = customThumb ? { ref: customThumb.ref, custom: true }
+        : (mine.thumb && mine.thumb.custom) ? mine.thumb
+        : pic ? { ref: pic.thumb.ref, custom: false }
+        : mine.thumb;
+      setEd('saving', 'Saving on the screen');
+      return request('save_item', {
+        baseVersion: mine.baseVersion,
+        item: { id: mine.id, label: label, text: text, picture: picture, thumb: thumb },
+        index: mine.index,
+      }, 3, function (attempt) {
+        if (token === edToken) setEd('saving', 'Saving on the screen, try ' + attempt + ' of 3');
+      }, 8000);
+    }).then(function (res) {
+      if (token !== edToken || !res) return;
+      if (res.ok) {
+        // Saved only now: the screen stored it and said so.
+        closeEditor();
+        setResult('succeeded', 'Saved: ' + label);
+      } else {
+        // After a "changed elsewhere" answer, the next Save is on top of
+        // the newest messages, which the person has now been told about.
+        if (res.code === 'conflict' && res.state) mine.baseVersion = res.state.libraryVersion;
+        setEd('failed', 'Not saved. ' + (res.error || 'The screen said no.'));
+      }
+    }, function (e) {
+      if (token === edToken) setEd('failed', 'Not saved. ' + e.message + ' Your changes are still here; tap Save to try again.');
+    });
+  }
+  $('ed-save').addEventListener('click', saveDraft);
+  $('ed-text').addEventListener('keydown', function (e) { if (e.key === 'Enter') saveDraft(); });
+  $('ed-label').addEventListener('keydown', function (e) { if (e.key === 'Enter') saveDraft(); });
+
+  $('ed-delete').addEventListener('click', function () { $('ed-delete-confirm').hidden = false; });
+  $('ed-delete-no').addEventListener('click', function () { $('ed-delete-confirm').hidden = true; });
+  $('ed-delete-yes').addEventListener('click', function () {
+    if (!draft) return;
+    var mine = draft;
+    var token = ++edToken;
+    var name = $('ed-label').value.trim() || 'message';
+    $('ed-delete-confirm').hidden = true;
+    setEd('saving', 'Deleting');
+    request('delete_item', { baseVersion: mine.baseVersion, id: mine.id }, 3, null, 8000).then(function (res) {
+      if (token !== edToken) return;
+      if (res.ok) {
+        closeEditor();
+        setResult('succeeded', 'Deleted: ' + name);
+      } else {
+        if (res.code === 'conflict' && res.state) mine.baseVersion = res.state.libraryVersion;
+        setEd('failed', 'Not deleted. ' + (res.error || 'The screen said no.'));
+      }
+    }, function (e) {
+      if (token === edToken) setEd('failed', 'Not deleted. ' + e.message);
+    });
+  });
+
+  // ---- Tabs (phone only; a wide screen shows everything) -----------------
+  var tabButtons = document.querySelectorAll('#tabs button');
+  function showTab(name) {
+    for (var i = 0; i < tabButtons.length; i += 1) {
+      tabButtons[i].setAttribute('aria-pressed', String(tabButtons[i].dataset.tab === name));
+    }
+    $('view-remote').hidden = name !== 'remote';
+    $('view-auto').hidden = name !== 'auto';
+    $('view-setup').hidden = name !== 'setup';
+  }
+  for (var t = 0; t < tabButtons.length; t += 1) {
+    tabButtons[t].addEventListener('click', function (e) { showTab(e.currentTarget.dataset.tab); });
+  }
+
+  // ---- Start -------------------------------------------------------------
+  // The last known keys show first (greyed) while the link comes up.
+  CS.get(THUMBS_KEY).then(function (stored) {
+    if (stored) thumbStore = stored;
+  }, function () {}).then(function () {
+    return CS.get(CACHE_KEY);
+  }).then(function (cache) {
+    if (cache && !library) {
+      library = cache.library;
+      settings = cache.settings;
+    }
+  }, function () {}).then(function () {
+    return CS.roomId();
+  }).then(function (id) {
+    roomId = id;
+    linkHome();
+  }, function () {
+    setLink('refused', 'This browser cannot work out the screen address. Open the site with https.');
+  });
+})();
+</script>
+</body>
+</html>
