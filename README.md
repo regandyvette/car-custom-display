@@ -1,6 +1,6 @@
 # Car Custom Display
 
-![A phone with a 3 by 3 keypad of picture keys linked to a tablet showing THANKS and a cat](docs/hero.png)
+![3D mockup of a keypad with nine picture keys next to a phone showing the Remote page with the same keys](docs/mockup.png)
 
 A phone and an old iPad are all you need. The iPad sits on a black screen.
 Press a key on your phone and a picture or a few words show up on the iPad.
@@ -65,8 +65,6 @@ the steps below yourself.
 Tap the black screen on the iPad any time to get back to its setup layer.
 
 ## Pick your hardware
-![Three setups: phone and tablet, keyboard or macro keypad with a wired display, and two spare phones](docs/hardware.png)
-
 The Screen and the Remote only need a modern browser and internet. Mix and
 match.
 
