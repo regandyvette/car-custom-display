@@ -17,7 +17,7 @@ hardware, no accounts.
 ## The fast way: hand it to your coding assistant
 If you use a coding assistant, give it this repo and this message:
 
-> Set up the project at https://github.com/alpasmade/car-custom-display for me
+> Set up the project at https://github.com/regandyvette/car-custom-display for me
 > by following AGENTS.md. Read DISCLAIMER.md first and tell me what it says.
 > Fork it to my GitHub, ask me what hardware I have and which free host I use
 > (Vercel, Netlify, Cloudflare Pages or GitHub Pages), set it up there, then

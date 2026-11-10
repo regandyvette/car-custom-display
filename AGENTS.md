@@ -61,7 +61,7 @@ them this version cannot do it.
 
 1. **Fork and clone.**
    ```bash
-   gh repo fork alpasmade/car-custom-display --clone
+   gh repo fork regandyvette/car-custom-display --clone
    cd car-custom-display
    ```
    (No GitHub CLI? Use the Fork button on the repo page, then clone your fork.)
