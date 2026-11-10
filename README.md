@@ -1,5 +1,7 @@
 # Car Custom Display
 
+![A phone with a 3 by 3 keypad of picture keys linked to a tablet showing THANKS and a cat](docs/hero.png)
+
 A phone and an old iPad are all you need. The iPad sits on a black screen.
 Press a key on your phone and a picture or a few words show up on the iPad.
 Add, change and delete your own messages and pictures. No laptop, no extra
@@ -21,6 +23,23 @@ If you use a coding assistant, give it this repo and this message:
 [AGENTS.md](AGENTS.md) holds the exact steps, how to change the starter
 messages and colors, and a fix list for common problems. You can also follow
 the steps below yourself.
+
+## What it looks like
+**The Remote (the console you press)**
+
+| Keys | Key pressed | Edit mode |
+| --- | --- | --- |
+| <img src="docs/remote.png" width="220" alt="The Remote with a 3 by 3 grid of picture keys"> | <img src="docs/remote-pressed.png" width="220" alt="The Remote with Thanks selected and the status line showing what is on the screen"> | <img src="docs/remote-edit.png" width="220" alt="The Remote in edit mode with a pencil on each key"> |
+
+| Auto tab | Setup tab |
+| --- | --- |
+| <img src="docs/remote-auto.png" width="220" alt="The Auto tab with Auto next and Stay on screen cards"> | <img src="docs/remote-setup.png" width="220" alt="The Setup tab with link status, message count and safety note"> |
+
+**The Screen (what shows in the car)**
+
+| Setup layer (tap the black screen) | Showing a message |
+| --- | --- |
+| <img src="docs/screen-setup.png" width="360" alt="The Screen setup layer with the address to open on your phone"> | <img src="docs/screen-live.png" width="360" alt="The Screen showing THANKS and a cat picture on black"> |
 
 ## What you need
 - Something with a screen to be the **Screen** (see the hardware options
@@ -46,6 +65,8 @@ the steps below yourself.
 Tap the black screen on the iPad any time to get back to its setup layer.
 
 ## Pick your hardware
+![Three setups: phone and tablet, keyboard or macro keypad with a wired display, and two spare phones](docs/hardware.png)
+
 The Screen and the Remote only need a modern browser and internet. Mix and
 match.
 
@@ -128,6 +149,7 @@ send number keys.
 | `remote.html` | The phone page |
 | `shared.js` | Code both pages share, and the starter messages |
 | `app.css` | The look |
+| `docs/` | The pictures used in this README |
 | `media/` | Plain starter pictures, drawn by `make_placeholders.py` |
 | `vendor/` | PeerJS, copied in so nothing loads from another site |
 | `fonts/` | The Outfit font |
