@@ -1,4 +1,4 @@
-// Copyright (c) 2026 Alpas Made. Released under the MIT License (see LICENSE).
+// Copyright (c) 2026 Alpas Made. Personal and noncommercial use only (see LICENSE).
 //
 // Car Screen: code shared by the screen page (iPad) and the remote page
 // (phone or Mac). Small storage helper, ids, the address the two pages meet

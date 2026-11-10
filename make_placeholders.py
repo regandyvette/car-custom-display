@@ -1,4 +1,4 @@
-# Copyright (c) 2026 Alpas Made. Released under the MIT License (see LICENSE).
+# Copyright (c) 2026 Alpas Made. Personal and noncommercial use only (see LICENSE).
 #
 # Draws the eight plain starter pictures in media/. They are original
 # drawings made by this script, so there is nothing to license. Replace them

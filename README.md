@@ -10,6 +10,9 @@ hardware, no accounts.
 > **Read the [DISCLAIMER](DISCLAIMER.md) first.** This is a fun project for
 > private property. A screen that faces outside a vehicle may be illegal on
 > public roads where you live. You use it at your own risk.
+>
+> **Personal use only.** Free to build for yourself. Not for sale or commercial
+> use. See the [LICENSE](LICENSE).
 
 ## The fast way: hand it to your coding assistant
 If you use a coding assistant, give it this repo and this message:
@@ -153,7 +156,12 @@ send number keys.
 | `fonts/` | The Outfit font |
 
 ## Credits and licenses
-- App code: MIT, see [LICENSE](LICENSE).
+- App code: free for personal and noncommercial use under the
+  [PolyForm Noncommercial License 1.0.0](LICENSE). You may use it, change it
+  and share it for free. **You may not sell it, sell a product or service built
+  on it, or use it for any commercial purpose.** Keep the copyright notice when
+  you share it. For commercial use, ask first:
+  [@regandyvette](https://www.instagram.com/regandyvette/).
 - PeerJS: see `vendor/PEERJS-LICENSE.txt`.
 - Outfit font: SIL Open Font License, see `fonts/OUTFIT-LICENSE.txt`.
 
