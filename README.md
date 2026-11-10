@@ -1,6 +1,6 @@
 # Car Custom Display
 
-![3D mockup of a keypad with nine picture keys next to a phone showing the Remote page with the same keys](docs/mockup.png)
+![An iPad showing THANKS with a cat, an iPhone showing the Remote page with nine picture keys, and a macro keypad with the same keys](docs/mockup-hero.png)
 
 A phone and an old iPad are all you need. The iPad sits on a black screen.
 Press a key on your phone and a picture or a few words show up on the iPad.
